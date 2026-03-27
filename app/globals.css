@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* Dark-mode-only color tokens (per user) */
+:root {
+  color-scheme: dark;
+
+  --main: #2B2B2C;
+  --secondary: #4682B4;
+  --accent: #00A36C;
+  --background: #100C08;
+  --surface: #87CEEB;
+  --text: #FFFFFF;
+  --muted: #000000;
+  --muted-text: #59515E;
+  --border: #0047AB;
+  --hover: #E5E4E2;
+
+  --error: #FF0000;
+  --success: #00FF00;
+  --warning: #FFFF00;
+
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Ensure dark only: force dark theme variables for all users */
+html { background: var(--background); color-scheme: dark; }
+
+/* Global element styles */
+body {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  min-height: 100%;
+}
+
+/* Utility-ish helpers (kept minimal) */
+.bg-main { background-color: var(--main); }
+.bg-secondary { background-color: var(--secondary); }
+.text-default { color: var(--text); }
+.muted { color: var(--muted-text); }
+.border-accent { border-color: var(--border); }
+.hover-light:hover { background-color: var(--hover); }
+
