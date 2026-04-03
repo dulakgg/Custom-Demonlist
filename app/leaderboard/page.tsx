@@ -103,13 +103,7 @@ export default async function LeaderboardPage() {
   const levels = await getLeaderboardLevels();
 
   return (
-    <main
-      className="min-h-dvh px-2 pb-4 pt-1 text-(--text) md:px-3 md:pb-6 md:pt-1"
-      style={{
-        background:
-          "radial-gradient(circle at 8% 11%, color-mix(in srgb, var(--accent, var(--primary)) 22%, transparent), transparent 38%), radial-gradient(circle at 82% 6%, color-mix(in srgb, var(--secondary, var(--primary)) 24%, transparent), transparent 40%), linear-gradient(172deg, var(--background), color-mix(in srgb, var(--background) 75%, var(--primary)))",
-      }}
-    >
+    <main className="min-h-dvh px-2 pb-4 pt-1 text-(--text) md:px-3 md:pb-6 md:pt-1">
       <LeaderboardClient levels={levels} />
     </main>
   );

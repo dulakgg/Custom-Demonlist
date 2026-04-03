@@ -3,14 +3,28 @@
 :root {
   --font-sans: var(--font-inter);
   --font-display: var(--font-poppins);
+  --border: color-mix(in oklab, var(--text, #111111) 22%, transparent);
+  --hover: color-mix(in oklab, var(--primary, #d400ff) 16%, var(--background, #ffffff));
 }
 
 html, body {
+  min-height: 100%;
   font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scrollbar-width: thin;
   scrollbar-color: var(--primary) var(--hover);
+  color: var(--text, #111111);
+}
+
+body {
+  min-height: 100dvh;
+  background-color: var(--background, #ffffff);
+  background-image:
+    radial-gradient(circle at 8% 11%, color-mix(in srgb, var(--accent, var(--primary)) 18%, transparent), transparent 37%),
+    radial-gradient(circle at 82% 6%, color-mix(in srgb, var(--secondary, var(--primary)) 20%, transparent), transparent 40%),
+    linear-gradient(172deg, var(--background), color-mix(in srgb, var(--background) 78%, var(--primary)));
+  background-attachment: fixed;
 }
 
 h1,

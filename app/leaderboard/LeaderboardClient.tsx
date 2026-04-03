@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { FaCrown } from "react-icons/fa6";
@@ -78,10 +78,19 @@ function formatDate(value?: string): string {
   }).format(date);
 }
 
-function detailRows(level: LeaderboardLevel, details?: LevelDetails) {
+function formatRoundedNumber(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return String(Math.round(value));
+}
+
+function detailRows(level: LeaderboardLevel, displayPosition: number, aredlPosition: number, details?: LevelDetails) {
   return [
     { label: "Level ID", value: String(level.levelId) },
-    { label: "Position", value: `#${level.position}` },
+    { label: "Position", value: `#${displayPosition}` },
+    { label: "AREDL Position", value: `#${aredlPosition}` },
     { label: "Points", value: details?.points != null ? String(details.points) : "-" },
     { label: "Legacy", value: details?.legacy != null ? (details.legacy ? "Yes" : "No") : level.legacy ? "Yes" : "No" },
     { label: "Two Player", value: details?.two_player != null ? (details.two_player ? "Yes" : "No") : "-" },
@@ -90,11 +99,11 @@ function detailRows(level: LeaderboardLevel, details?: LevelDetails) {
       label: "Publisher",
       value: details?.publisher ? details.publisher.global_name || details.publisher.username || "-" : "-",
     },
-    { label: "GDDL Tier", value: details?.gddl_tier != null ? String(details.gddl_tier) : "-" },
+    { label: "GDDL Tier", value: formatRoundedNumber(details?.gddl_tier) },
     { label: "NLW Tier", value: details?.nlw_tier || "-" },
     {
       label: "Enjoyment",
-      value: details?.edel_enjoyment != null ? String(details.edel_enjoyment) : "-",
+      value: formatRoundedNumber(details?.edel_enjoyment),
     },
     {
       label: "Pending",
@@ -112,12 +121,14 @@ type DetailTab = "records" | "info";
 function LevelCard({
   level,
   index,
+  displayPosition,
   isActive,
   onSelect,
   prefersReducedMotion,
 }: {
   level: LeaderboardLevel;
   index: number;
+  displayPosition: number;
   isActive: boolean;
   onSelect: (id: number) => void;
   prefersReducedMotion: boolean | null;
@@ -147,7 +158,12 @@ function LevelCard({
       </div>
       <div className="px-3 py-2">
         <h2 className="m-0 text-[clamp(0.95rem,1.35vw,1.2rem)] leading-tight text-(--text)">{level.levelName}</h2>
-        <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-(--accent)">Position #{level.position}</p>
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <p className="m-0 text-[11px] uppercase tracking-[0.12em] text-(--accent)">Position #{displayPosition}</p>
+          <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
+            AREDL #{Math.round(level.position)}
+          </span>
+        </div>
       </div>
     </motion.button>
   );
@@ -155,10 +171,13 @@ function LevelCard({
 
 type LevelDetailsPanelProps = {
   level: LeaderboardLevel;
+  displayPosition: number;
   selectedRecord: LeaderboardRecord | null;
   onRecordSelect: (recordId: string) => void;
   selectedDetails?: LevelDetails;
   loadingInfo: boolean;
+  detailsError: string | null;
+  onRetryInfo: () => void;
   activeEmbed: string | null;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
@@ -169,10 +188,13 @@ type LevelDetailsPanelProps = {
 
 function LevelDetailsPanel({
   level,
+  displayPosition,
   selectedRecord,
   onRecordSelect,
   selectedDetails,
   loadingInfo,
+  detailsError,
+  onRetryInfo,
   activeEmbed,
   activeTab,
   onTabChange,
@@ -184,6 +206,11 @@ function LevelDetailsPanel({
   const infoTabId = `info-tab-${level.levelId}`;
   const recordsPanelId = `records-panel-${level.levelId}`;
   const infoPanelId = `info-panel-${level.levelId}`;
+  const detailsPosition = selectedDetails?.position;
+  const aredlPosition =
+    typeof detailsPosition === "number" && Number.isFinite(detailsPosition)
+      ? Math.round(detailsPosition)
+      : Math.round(level.position);
 
   return (
     <motion.article
@@ -195,9 +222,14 @@ function LevelDetailsPanel({
     >
       <p className="m-0 text-[11px] uppercase tracking-[0.14em] text-(--accent)">{panelTitle}</p>
       <h3 className="m-0 mt-1 text-[1.12rem] leading-tight text-(--text)">{level.levelName}</h3>
-      <p className="mt-1 text-[11px] uppercase tracking-widest text-[color-mix(in_srgb,var(--text)_72%,transparent)]">
-        Position #{level.position} {level.legacy ? " • Legacy" : ""}
-      </p>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="m-0 text-[11px] uppercase tracking-widest text-[color-mix(in_srgb,var(--text)_72%,transparent)]">
+          Position #{displayPosition} {level.legacy ? " • Legacy" : ""}
+        </p>
+        <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
+          AREDL #{aredlPosition}
+        </span>
+      </div>
 
       <div className="mt-3 overflow-hidden rounded-xl border border-(--border) bg-[color-mix(in_srgb,var(--background)_66%,black)]">
         {activeEmbed ? (
@@ -205,7 +237,7 @@ function LevelDetailsPanel({
             src={activeEmbed}
             title={`${level.levelName} completion`}
             className="block aspect-video w-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
           />
@@ -294,11 +326,29 @@ function LevelDetailsPanel({
       ) : (
         <div id={infoPanelId} role="tabpanel" aria-labelledby={infoTabId} className="mt-2">
           {loadingInfo && !selectedDetails ? (
-            <p className="text-sm text-[color-mix(in_srgb,var(--text)_72%,transparent)]">Loading level info...</p>
+            <div className="grid gap-1.5" aria-live="polite" aria-label="Loading level info">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-12 animate-pulse rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background)_72%,transparent)]"
+                />
+              ))}
+            </div>
+          ) : detailsError && !selectedDetails ? (
+            <div className="rounded-lg border border-[color-mix(in_srgb,var(--danger,#af2c1f)_42%,transparent)] bg-[color-mix(in_srgb,var(--danger,#af2c1f)_10%,var(--background))] px-3 py-2">
+              <p className="m-0 text-sm text-(--text)">{detailsError}</p>
+              <button
+                type="button"
+                onClick={onRetryInfo}
+                className="mt-2 cursor-pointer rounded-lg border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_12%,var(--background))] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.11em] text-(--primary) transition hover:bg-[color-mix(in_srgb,var(--primary)_22%,var(--background))]"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <>
               <ul className="grid list-none gap-1.5 p-0">
-                {detailRows(level, selectedDetails).map((entry) => (
+                {detailRows(level, displayPosition, aredlPosition, selectedDetails).map((entry) => (
                   <li
                     key={entry.label}
                     className="rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--background)_74%,transparent)] px-2.5 py-2"
@@ -327,8 +377,10 @@ export default function LeaderboardClient({ levels }: Props) {
   const [selectedLevelId, setSelectedLevelId] = useState<number | null>(levels[0]?.levelId ?? null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [detailsByLevelId, setDetailsByLevelId] = useState<Record<number, LevelDetails>>({});
-  const [loadingInfoForLevelId, setLoadingInfoForLevelId] = useState<number | null>(null);
+  const [loadingInfoByLevelId, setLoadingInfoByLevelId] = useState<Record<number, boolean>>({});
+  const [detailsErrorByLevelId, setDetailsErrorByLevelId] = useState<Record<number, string>>({});
   const [tabByLevelId, setTabByLevelId] = useState<Record<number, DetailTab>>({});
+  const inFlightDetailRequests = useRef<Set<number>>(new Set());
 
   const selectedLevel = useMemo(
     () => levels.find((level) => level.levelId === selectedLevelId) ?? null,
@@ -344,45 +396,6 @@ export default function LeaderboardClient({ levels }: Props) {
     const firstWithVideo = selectedLevel.records.find((record) => youtubeEmbed(record.videoUrl) !== null);
     setSelectedRecordId(firstWithVideo?.id ?? selectedLevel.records[0]?.id ?? null);
   }, [selectedLevel]);
-
-  useEffect(() => {
-    if (!selectedLevel) {
-      return;
-    }
-
-    const levelId = selectedLevel.levelId;
-
-    if (detailsByLevelId[levelId]) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadDetails() {
-      setLoadingInfoForLevelId(levelId);
-      try {
-        const response = await fetch(`/api/aredl/levels/${levelId}`);
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as LevelDetails;
-        if (!cancelled) {
-          setDetailsByLevelId((prev) => ({ ...prev, [levelId]: payload }));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingInfoForLevelId((current) => (current === levelId ? null : current));
-        }
-      }
-    }
-
-    void loadDetails();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailsByLevelId, selectedLevel]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedLevel) {
@@ -402,7 +415,67 @@ export default function LeaderboardClient({ levels }: Props) {
   const activeEmbed = youtubeEmbed(selectedRecord?.videoUrl);
   const currentLevels = useMemo(() => levels.filter((level) => !level.legacy), [levels]);
   const legacyLevels = useMemo(() => levels.filter((level) => level.legacy), [levels]);
+  const displayPositionByLevelId = useMemo(() => {
+    const map: Record<number, number> = {};
+    let position = 1;
+
+    for (const level of currentLevels) {
+      map[level.levelId] = position;
+      position += 1;
+    }
+
+    for (const level of legacyLevels) {
+      map[level.levelId] = position;
+      position += 1;
+    }
+
+    return map;
+  }, [currentLevels, legacyLevels]);
   const selectedDetails = selectedLevel ? detailsByLevelId[selectedLevel.levelId] : undefined;
+
+  async function ensureLevelDetails(levelId: number) {
+    if (detailsByLevelId[levelId] || inFlightDetailRequests.current.has(levelId)) {
+      return;
+    }
+
+    inFlightDetailRequests.current.add(levelId);
+    setLoadingInfoByLevelId((prev) => ({ ...prev, [levelId]: true }));
+    setDetailsErrorByLevelId((prev) => {
+      if (!(levelId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[levelId];
+      return next;
+    });
+
+    try {
+      const response = await fetch(`/api/aredl/levels/${levelId}`, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error("Failed to load level details");
+      }
+
+      const payload = (await response.json()) as LevelDetails;
+      setDetailsByLevelId((prev) => (prev[levelId] ? prev : { ...prev, [levelId]: payload }));
+    } catch {
+      setDetailsErrorByLevelId((prev) => ({
+        ...prev,
+        [levelId]: "Could not load level info. Please try again.",
+      }));
+    } finally {
+      inFlightDetailRequests.current.delete(levelId);
+      setLoadingInfoByLevelId((prev) => {
+        if (!prev[levelId]) {
+          return prev;
+        }
+
+        const next = { ...prev };
+        delete next[levelId];
+        return next;
+      });
+    }
+  }
 
   function setTabForLevel(levelId: number, tab: DetailTab) {
     setTabByLevelId((prev) => {
@@ -414,14 +487,29 @@ export default function LeaderboardClient({ levels }: Props) {
     });
   }
 
+  function handleTabChange(levelId: number, tab: DetailTab) {
+    setTabForLevel(levelId, tab);
+
+    if (tab === "info") {
+      void ensureLevelDetails(levelId);
+    }
+  }
+
   function handleLevelSelect(levelId: number) {
+    const isOpening = selectedLevelId !== levelId;
     setSelectedLevelId((current) => (current === levelId ? null : levelId));
+
+    if (isOpening && (tabByLevelId[levelId] ?? "records") === "info") {
+      void ensureLevelDetails(levelId);
+    }
   }
 
   function renderLevelRow(level: LeaderboardLevel, index: number) {
     const isActive = selectedLevelId === level.levelId;
     const levelDetails = detailsByLevelId[level.levelId];
-    const loadingLevelInfo = loadingInfoForLevelId === level.levelId && !levelDetails;
+    const displayPosition = displayPositionByLevelId[level.levelId] ?? index + 1;
+    const loadingLevelInfo = Boolean(loadingInfoByLevelId[level.levelId] && !levelDetails);
+    const levelError = detailsErrorByLevelId[level.levelId] ?? null;
     const panelRecord = isActive ? selectedRecord : level.records[0] ?? null;
     const panelEmbed = youtubeEmbed(panelRecord?.videoUrl);
     const panelTab = tabByLevelId[level.levelId] ?? "records";
@@ -431,6 +519,7 @@ export default function LeaderboardClient({ levels }: Props) {
         <LevelCard
           level={level}
           index={index}
+          displayPosition={displayPosition}
           isActive={isActive}
           onSelect={handleLevelSelect}
           prefersReducedMotion={prefersReducedMotion}
@@ -438,13 +527,18 @@ export default function LeaderboardClient({ levels }: Props) {
         {isActive ? (
           <LevelDetailsPanel
             level={level}
+            displayPosition={displayPosition}
             selectedRecord={panelRecord}
             onRecordSelect={setSelectedRecordId}
             selectedDetails={levelDetails}
             loadingInfo={loadingLevelInfo}
+            detailsError={levelError}
+            onRetryInfo={() => {
+              void ensureLevelDetails(level.levelId);
+            }}
             activeEmbed={panelEmbed}
             activeTab={panelTab}
-            onTabChange={(tab) => setTabForLevel(level.levelId, tab)}
+            onTabChange={(tab) => handleTabChange(level.levelId, tab)}
             prefersReducedMotion={prefersReducedMotion}
             className="xl:hidden"
             panelTitle="Level details"
@@ -482,13 +576,18 @@ export default function LeaderboardClient({ levels }: Props) {
             <LevelDetailsPanel
               key={selectedLevel.levelId}
               level={selectedLevel}
+              displayPosition={displayPositionByLevelId[selectedLevel.levelId] ?? 1}
               selectedRecord={selectedRecord}
               onRecordSelect={setSelectedRecordId}
               selectedDetails={selectedDetails}
-              loadingInfo={loadingInfoForLevelId === selectedLevel.levelId && !selectedDetails}
+              loadingInfo={Boolean(loadingInfoByLevelId[selectedLevel.levelId] && !selectedDetails)}
+              detailsError={detailsErrorByLevelId[selectedLevel.levelId] ?? null}
+              onRetryInfo={() => {
+                void ensureLevelDetails(selectedLevel.levelId);
+              }}
               activeEmbed={activeEmbed}
               activeTab={tabByLevelId[selectedLevel.levelId] ?? "records"}
-              onTabChange={(tab) => setTabForLevel(selectedLevel.levelId, tab)}
+              onTabChange={(tab) => handleTabChange(selectedLevel.levelId, tab)}
               prefersReducedMotion={prefersReducedMotion}
               panelTitle="Completion panel"
             />
