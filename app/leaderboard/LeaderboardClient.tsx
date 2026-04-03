@@ -135,15 +135,16 @@ function LevelCard({
       transition={prefersReducedMotion ? undefined : { duration: 0.22, ease: "easeOut", delay: index * 0.012 }}
       whileHover={prefersReducedMotion ? undefined : { scale: 1.004 }}
     >
-      <Image
-        src={level.thumbnailUrl}
-        alt={`${level.levelName} thumbnail`}
-        width={1920}
-        height={200}
-        loading="lazy"
-        sizes="(max-width: 1535px) 100vw, 1500px"
-        className="block h-19.5 w-full object-cover sm:h-23 md:h-27 lg:h-29.5 xl:h-33"
-      />
+      <div className="relative h-19.5 w-full sm:h-23 md:h-27 lg:h-29.5 xl:h-33">
+        <Image
+          src={level.thumbnailUrl}
+          alt={`${level.levelName} thumbnail`}
+          fill
+          loading={index === 0 ? "eager" : "lazy"}
+          sizes="(max-width: 1535px) 100vw, 1500px"
+          className="object-cover"
+        />
+      </div>
       <div className="px-3 py-2">
         <h2 className="m-0 text-[clamp(0.95rem,1.35vw,1.2rem)] leading-tight text-(--text)">{level.levelName}</h2>
         <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-(--accent)">Position #{level.position}</p>
@@ -459,9 +460,6 @@ export default function LeaderboardClient({ levels }: Props) {
         <header className="rounded-2xl border border-(--border) bg-[color-mix(in_srgb,var(--background)_88%,transparent)] p-4 shadow-[0_18px_40px_color-mix(in_srgb,var(--primary)_16%,transparent)] backdrop-blur-md">
           <p className="m-0 text-[11px] uppercase tracking-[0.16em] text-(--accent)">Custom demonlist</p>
           <h1 className="m-0 mt-1 text-[clamp(1.3rem,2.6vw,2.5rem)] leading-[0.95] text-(--text)">Leaderboard</h1>
-          <p className="mt-2 max-w-3xl text-sm text-[color-mix(in_srgb,var(--text)_74%,transparent)]">
-            Click a strip to open completion details. On phones, tabs open directly under the selected strip.
-          </p>
         </header>
 
         <div className="mt-4 flex flex-col gap-2.5" aria-label="Current list">

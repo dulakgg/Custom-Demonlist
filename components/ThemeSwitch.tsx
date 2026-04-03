@@ -7,6 +7,7 @@ type ThemeListResponse = {
 };
 
 const STORAGE_KEY = "theme";
+const THEME_COOKIE = "theme";
 
 function themeLabel(name: string): string {
   return name.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -27,6 +28,9 @@ function applyTheme(theme: string) {
   if (link.getAttribute("href") !== href) {
     link.setAttribute("href", href);
   }
+
+  const oneYear = 60 * 60 * 24 * 365;
+  document.cookie = `${THEME_COOKIE}=${encodeURIComponent(theme)}; Path=/; Max-Age=${oneYear}; SameSite=Lax`;
 }
 
 export default function ThemeSwitch({ className }: { className?: string }) {
