@@ -1,0 +1,17 @@
+:root[data-theme="dulak"] {
+    --background: oklch(.96 .085 330);
+    --bg-dark: oklch(.92 .085 330);
+    --text: oklch(.15 .17 330);
+    --text-muted: oklch(.4 .17 330);
+    --highlight: oklch(1 .17 330);
+    --border: oklch(.6 .17 330);
+    --border-muted: oklch(.7 .17 330);
+    --primary: oklch(.4 .17 330);
+    --secondary: oklch(.4 .17 150);
+    --accent: var(--secondary);
+    --hover: color-mix(in oklab, var(--highlight) 38%, var(--background));
+    --danger: #af2c1f;
+    --warning: #726400;
+    --success: #007849;
+    --info: #1f5dc2;
+}

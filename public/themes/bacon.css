@@ -1,0 +1,7 @@
+:root[data-theme="bacon"] {
+    --text: #ffffff;
+    --background: #0a0826;
+    --primary: #d400ff;
+    --secondary: #ffd400;
+    --accent: #ffadfd;
+}
