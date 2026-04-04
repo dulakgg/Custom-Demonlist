@@ -12,6 +12,7 @@ const REQUEST_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 650;
 const BETWEEN_REQUEST_DELAY_MS = 1_000;
 const PHASE_PAUSE_MS = 2_000;
+const RECORD_INSERT_CHUNK_SIZE = 500;
 const WEBHOOK_PROGRESS_STEP_PERCENT = 5;
 const DISCORD_REFRESH_WEBHOOK_URL = process.env.LEADERBOARD_REFRESH_DISCORD_WEBHOOK_URL;
 
@@ -451,60 +452,66 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
 
     await sleep(PHASE_PAUSE_MS);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.levelRecord.deleteMany();
-      await tx.level.deleteMany();
+    const levelRows = levels.map((level) => {
+      const details = detailsByLevelId.get(level.levelId);
+      const position = toFiniteNumber(details?.position) ?? toFiniteNumber(level.position) ?? 0;
 
-      if (levels.length === 0) {
-        return;
-      }
+      return {
+        levelId: level.levelId,
+        levelName: details?.name?.trim() || level.levelName,
+        position,
+        legacy: details?.legacy ?? level.legacy,
+        thumbnailUrl: level.thumbnailUrl,
+        aredlId: details?.id ?? null,
+        points: toSafeInt(details?.points),
+        twoPlayer: details?.two_player ?? null,
+        tags: details?.tags ?? [],
+        description: details?.description || null,
+        song: toSafeInt(details?.song),
+        edelEnjoyment: toFiniteNumber(details?.edel_enjoyment),
+        isEdelPending: details?.is_edel_pending ?? null,
+        gddlTier: toFiniteNumber(details?.gddl_tier),
+        nlwTier: details?.nlw_tier || null,
+        publisherUsername: details?.publisher?.username || null,
+        publisherGlobal: details?.publisher?.global_name || null,
+      };
+    });
 
-      await tx.level.createMany({
-        data: levels.map((level) => {
-          const details = detailsByLevelId.get(level.levelId);
-          const position = toFiniteNumber(details?.position) ?? toFiniteNumber(level.position) ?? 0;
+    const recordRows = levels.flatMap((level) =>
+      level.records.map((record) => ({
+        id: record.id,
+        levelId: level.levelId,
+        playerDisplayName: record.playerDisplayName,
+        playerUsername: record.playerUsername,
+        isListedPlayer: record.isListedPlayer,
+        completedAt: parseOptionalDate(record.completedAt),
+        videoUrl: record.videoUrl,
+      })),
+    );
 
-          return {
-            levelId: level.levelId,
-            levelName: details?.name?.trim() || level.levelName,
-            position,
-            legacy: details?.legacy ?? level.legacy,
-            thumbnailUrl: level.thumbnailUrl,
-            aredlId: details?.id ?? null,
-            points: toSafeInt(details?.points),
-            twoPlayer: details?.two_player ?? null,
-            tags: details?.tags ?? [],
-            description: details?.description || null,
-            song: toSafeInt(details?.song),
-            edelEnjoyment: toFiniteNumber(details?.edel_enjoyment),
-            isEdelPending: details?.is_edel_pending ?? null,
-            gddlTier: toFiniteNumber(details?.gddl_tier),
-            nlwTier: details?.nlw_tier || null,
-            publisherUsername: details?.publisher?.username || null,
-            publisherGlobal: details?.publisher?.global_name || null,
-          };
-        }),
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.levelRecord.deleteMany();
+        await tx.level.deleteMany();
 
-      for (const level of levels) {
-        if (level.records.length === 0) {
-          continue;
+        if (levelRows.length === 0) {
+          return;
         }
 
-        await tx.levelRecord.createMany({
-          data: level.records.map((record) => ({
-            id: record.id,
-            levelId: level.levelId,
-            playerDisplayName: record.playerDisplayName,
-            playerUsername: record.playerUsername,
-            isListedPlayer: record.isListedPlayer,
-            completedAt: parseOptionalDate(record.completedAt),
-            videoUrl: record.videoUrl,
-          })),
-          skipDuplicates: true,
-        });
-      }
-    });
+        await tx.level.createMany({ data: levelRows });
+
+        for (let index = 0; index < recordRows.length; index += RECORD_INSERT_CHUNK_SIZE) {
+          await tx.levelRecord.createMany({
+            data: recordRows.slice(index, index + RECORD_INSERT_CHUNK_SIZE),
+            skipDuplicates: true,
+          });
+        }
+      },
+      {
+        maxWait: 15_000,
+        timeout: 180_000,
+      },
+    );
 
     revalidatePath("/leaderboard");
 
