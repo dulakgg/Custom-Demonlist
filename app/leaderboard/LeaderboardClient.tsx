@@ -24,20 +24,20 @@ type LeaderboardLevel = {
 };
 
 type LevelDetails = {
-  id: string;
+  id?: string;
   level_id: number;
   position: number;
   name: string;
-  points: number;
+  points?: number | null;
   legacy: boolean;
-  two_player: boolean;
-  tags: string[];
-  description: string;
-  song: number;
-  edel_enjoyment: number;
-  is_edel_pending: boolean;
-  gddl_tier: number;
-  nlw_tier: string;
+  two_player?: boolean | null;
+  tags?: string[];
+  description?: string;
+  song?: number | null;
+  edel_enjoyment?: number | null;
+  is_edel_pending?: boolean | null;
+  gddl_tier?: number | null;
+  nlw_tier?: string | null;
   publisher?: {
     username?: string;
     global_name?: string;
@@ -78,7 +78,7 @@ function formatDate(value?: string): string {
   }).format(date);
 }
 
-function formatRoundedNumber(value: number | undefined): string {
+function formatRoundedNumber(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return "-";
   }

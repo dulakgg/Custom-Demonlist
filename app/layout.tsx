@@ -4,6 +4,7 @@ import { Inter, Poppins } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import SiteNav from "@/components/SiteNav";
+import Providers from "@/app/providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -100,8 +101,10 @@ export default async function RootLayout({
           color: "var(--text, #111111)",
         }}
       >
-        <SiteNav />
-        <div className="flex-1">{children}</div>
+        <Providers>
+          <SiteNav />
+          <div className="flex-1">{children}</div>
+        </Providers>
       </body>
     </html>
   );

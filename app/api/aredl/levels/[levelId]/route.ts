@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 type RouteParams = {
   params: Promise<{ levelId: string }>;
 };
-
-const API_BASE = "https://api.aredl.net/v2/api/aredl";
 
 export async function GET(_: Request, { params }: RouteParams) {
   const { levelId } = await params;
@@ -14,14 +13,58 @@ export async function GET(_: Request, { params }: RouteParams) {
     return NextResponse.json({ message: "Invalid level id" }, { status: 400 });
   }
 
-  const response = await fetch(`${API_BASE}/levels/${id}`, {
-    next: { revalidate: 300 },
+  const level = await prisma.level.findUnique({
+    where: { levelId: id },
+    select: {
+      aredlId: true,
+      levelId: true,
+      position: true,
+      levelName: true,
+      points: true,
+      legacy: true,
+      twoPlayer: true,
+      tags: true,
+      description: true,
+      song: true,
+      edelEnjoyment: true,
+      isEdelPending: true,
+      gddlTier: true,
+      nlwTier: true,
+      publisherUsername: true,
+      publisherGlobal: true,
+    },
   });
 
-  if (!response.ok) {
-    return NextResponse.json({ message: "Level not found" }, { status: response.status });
+  if (!level) {
+    return NextResponse.json(
+      { message: "Level not found in cache. Refresh the leaderboard first." },
+      { status: 404 },
+    );
   }
 
-  const payload = await response.json();
-  return NextResponse.json(payload);
+  const publisher =
+    level.publisherUsername || level.publisherGlobal
+      ? {
+          username: level.publisherUsername,
+          global_name: level.publisherGlobal,
+        }
+      : undefined;
+
+  return NextResponse.json({
+    id: level.aredlId ?? String(level.levelId),
+    level_id: level.levelId,
+    position: level.position,
+    name: level.levelName,
+    points: level.points,
+    legacy: level.legacy,
+    two_player: level.twoPlayer,
+    tags: level.tags,
+    description: level.description ?? "",
+    song: level.song,
+    edel_enjoyment: level.edelEnjoyment,
+    is_edel_pending: level.isEdelPending,
+    gddl_tier: level.gddlTier,
+    nlw_tier: level.nlwTier,
+    publisher,
+  });
 }
