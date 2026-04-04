@@ -15,9 +15,14 @@ type AppJwt = {
 
 const discordClientId = process.env.DISCORD_CLIENT_ID;
 const discordClientSecret = process.env.DISCORD_CLIENT_SECRET;
+const authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
 
 if (!discordClientId || !discordClientSecret) {
   throw new Error("Missing DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET in environment.");
+}
+
+if (process.env.NODE_ENV === "production" && !authSecret) {
+  throw new Error("Missing AUTH_SECRET or NEXTAUTH_SECRET in environment.");
 }
 
 export const authOptions: NextAuthOptions = {
@@ -88,5 +93,5 @@ export const authOptions: NextAuthOptions = {
       return appToken;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: authSecret,
 };

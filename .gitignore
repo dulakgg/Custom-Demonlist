@@ -16,6 +16,7 @@
 
 # next.js
 /.next/
+secret_links.md
 /out/
 
 # production

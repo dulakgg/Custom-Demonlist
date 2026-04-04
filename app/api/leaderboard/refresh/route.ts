@@ -5,12 +5,15 @@ import { prisma } from "@/lib/prisma";
 import players from "../../../../players.json";
 
 const API_BASE = "https://api.aredl.net/v2/api/aredl";
-const PROFILE_CONCURRENCY = 2;
-const DETAILS_CONCURRENCY = 2;
+const PROFILE_CONCURRENCY = 1;
+const DETAILS_CONCURRENCY = 1;
 const REQUEST_TIMEOUT_MS = 12_000;
 const REQUEST_RETRIES = 2;
-const RETRY_BASE_DELAY_MS = 450;
-const BETWEEN_REQUEST_DELAY_MS = 130;
+const RETRY_BASE_DELAY_MS = 650;
+const BETWEEN_REQUEST_DELAY_MS = 1_000;
+const PHASE_PAUSE_MS = 2_000;
+const WEBHOOK_PROGRESS_STEP_PERCENT = 5;
+const DISCORD_REFRESH_WEBHOOK_URL = process.env.LEADERBOARD_REFRESH_DISCORD_WEBHOOK_URL;
 
 let refreshInProgress = false;
 
@@ -71,10 +74,116 @@ type AggregatedLevel = {
   records: AggregatedRecord[];
 };
 
+type RefreshStage = "starting" | "profiles" | "details" | "database" | "done" | "failed";
+
+type ProgressUpdate = {
+  stage: RefreshStage;
+  completed?: number;
+  total?: number;
+  note?: string;
+  force?: boolean;
+};
+
+type DiscordWebhookCreateResponse = {
+  id?: string;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function toPercent(completed: number, total: number): number {
+  if (total <= 0) {
+    return 100;
+  }
+
+  return Math.max(0, Math.min(100, Math.floor((completed / total) * 100)));
+}
+
+function buildDiscordWebhookMessageUrl(webhookUrl: string, messageId?: string, wait = false): string {
+  const url = new URL(webhookUrl);
+
+  if (messageId) {
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/messages/${messageId}`;
+  }
+
+  if (wait) {
+    url.searchParams.set("wait", "true");
+  } else {
+    url.searchParams.delete("wait");
+  }
+
+  return url.toString();
+}
+
+function formatWebhookContent(update: ProgressUpdate): string {
+  const lines = [`Leaderboard refresh: ${update.stage}`];
+
+  if (typeof update.completed === "number" && typeof update.total === "number") {
+    lines.push(`Progress: ${update.completed}/${update.total} (${toPercent(update.completed, update.total)}%)`);
+  }
+
+  if (update.note) {
+    lines.push(update.note);
+  }
+
+  lines.push(`Updated: ${new Date().toISOString()}`);
+  return lines.join("\n");
+}
+
+function createDiscordProgressReporter(webhookUrl: string | undefined) {
+  let messageId: string | null = null;
+  let lastProgressKey = "";
+
+  return async (update: ProgressUpdate): Promise<void> => {
+    if (!webhookUrl) {
+      return;
+    }
+
+    const percent =
+      typeof update.completed === "number" && typeof update.total === "number"
+        ? toPercent(update.completed, update.total)
+        : 0;
+    const progressBucket = Math.floor(percent / WEBHOOK_PROGRESS_STEP_PERCENT);
+    const progressKey = `${update.stage}:${progressBucket}`;
+
+    if (!update.force && progressKey === lastProgressKey) {
+      return;
+    }
+
+    const payload = { content: formatWebhookContent(update) };
+
+    try {
+      if (!messageId) {
+        const createResponse = await fetch(buildDiscordWebhookMessageUrl(webhookUrl, undefined, true), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          cache: "no-store",
+        });
+
+        if (!createResponse.ok) {
+          return;
+        }
+
+        const created = (await createResponse.json()) as DiscordWebhookCreateResponse;
+        messageId = created.id ?? null;
+      } else {
+        await fetch(buildDiscordWebhookMessageUrl(webhookUrl, messageId), {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          cache: "no-store",
+        });
+      }
+
+      lastProgressKey = progressKey;
+    } catch {
+      // Webhook failures should never interrupt refresh.
+    }
+  };
 }
 
 function levelThumbnail(levelId: number): string {
@@ -170,6 +279,7 @@ async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
   mapper: (item: T, index: number) => Promise<R>,
+  onProgress?: (result: R, index: number, completed: number, total: number) => Promise<void>,
 ): Promise<R[]> {
   if (items.length === 0) {
     return [];
@@ -177,6 +287,7 @@ async function mapWithConcurrency<T, R>(
 
   const results = new Array<R>(items.length);
   let nextIndex = 0;
+  let completed = 0;
 
   async function runWorker() {
     while (true) {
@@ -186,7 +297,13 @@ async function mapWithConcurrency<T, R>(
       }
 
       nextIndex += 1;
-      results[current] = await mapper(items[current], current);
+      const result = await mapper(items[current], current);
+      results[current] = result;
+      completed += 1;
+
+      if (onProgress) {
+        await onProgress(result, current, completed, items.length);
+      }
 
       if (BETWEEN_REQUEST_DELAY_MS > 0) {
         await sleep(BETWEEN_REQUEST_DELAY_MS);
@@ -265,19 +382,57 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
   }
 
   refreshInProgress = true;
+  const reportProgress = createDiscordProgressReporter(DISCORD_REFRESH_WEBHOOK_URL);
 
   try {
     const usernames = players.map((username) => username.trim()).filter(Boolean);
+
+    await reportProgress({
+      stage: "starting",
+      note: `Queued players: ${usernames.length}`,
+      force: true,
+    });
+
+    await sleep(PHASE_PAUSE_MS);
+
     const profileResponses = await mapWithConcurrency(
       usernames,
       PROFILE_CONCURRENCY,
       async (username) => fetchPlayerProfile(username),
+      async (profile, index, completed, total) => {
+        const username = usernames[index] ?? "unknown";
+        await reportProgress({
+          stage: "profiles",
+          completed,
+          total,
+          note: profile ? `Fetched profile: ${username}` : `Missing profile: ${username}`,
+          force: completed === total,
+        });
+      },
     );
+
+    await sleep(PHASE_PAUSE_MS);
+
     const profiles = profileResponses.filter((profile): profile is PlayerProfileResponse => profile !== null);
     const levels = buildLeaderboardLevels(usernames, profiles);
+    const totalRecords = levels.reduce((sum, level) => sum + level.records.length, 0);
 
-    const detailResponses = await mapWithConcurrency(levels, DETAILS_CONCURRENCY, async (level) =>
-      fetchLevelDetails(level.levelId),
+    const detailResponses = await mapWithConcurrency(
+      levels,
+      DETAILS_CONCURRENCY,
+      async (level) => fetchLevelDetails(level.levelId),
+      async (details, index, completed, total) => {
+        const level = levels[index];
+        await reportProgress({
+          stage: "details",
+          completed,
+          total,
+          note: details
+            ? `Fetched level details: #${level.levelId} ${level.levelName}`
+            : `Missing level details: #${level.levelId} ${level.levelName}`,
+          force: completed === total,
+        });
+      },
     );
     const detailsByLevelId = new Map<number, LevelDetailsResponse>();
 
@@ -287,6 +442,14 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
         detailsByLevelId.set(levels[index].levelId, details);
       }
     }
+
+    await reportProgress({
+      stage: "database",
+      note: `Writing ${levels.length} levels and ${totalRecords} records to database.`,
+      force: true,
+    });
+
+    await sleep(PHASE_PAUSE_MS);
 
     await prisma.$transaction(async (tx) => {
       await tx.levelRecord.deleteMany();
@@ -345,16 +508,28 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
 
     revalidatePath("/leaderboard");
 
+    await reportProgress({
+      stage: "done",
+      note: `Refresh complete: ${levels.length} levels, ${totalRecords} records, ${detailsByLevelId.size} detailed levels.`,
+      force: true,
+    });
+
     return NextResponse.json({
       message: "Leaderboard cache refreshed.",
       refreshedAt: new Date().toISOString(),
       levels: levels.length,
-      records: levels.reduce((sum, level) => sum + level.records.length, 0),
+      records: totalRecords,
       fetchedProfiles: profiles.length,
       missingProfiles: usernames.length - profiles.length,
       levelsWithDetails: detailsByLevelId.size,
     });
-  } catch {
+  } catch (error) {
+    await reportProgress({
+      stage: "failed",
+      note: error instanceof Error ? error.message : "Unknown refresh error.",
+      force: true,
+    });
+
     return NextResponse.json(
       { message: "Refresh failed. Try again in a moment." },
       { status: 500 },
