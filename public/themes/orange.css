@@ -1,0 +1,7 @@
+:root[data-theme="orange"] {
+    --text: #ffffff;
+    --background: #03002e;
+    --primary: #00BFFF;
+    --secondary: #FFA500;
+    --accent: #7FFFD4;
+}
