@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { IoIosColorPalette } from "react-icons/io";
 
 type ThemeListResponse = {
   themes?: string[];
@@ -112,9 +113,12 @@ export default function ThemeSwitch({ className }: { className?: string }) {
           type="button"
           onClick={() => setModalOpen((prev) => !prev)}
           disabled={isLoadingThemes}
-          className="cursor-pointer rounded-full border border-(--primary) bg-(--primary) p-1 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
+          className="cursor-pointer rounded-full inline border border-(--primary) bg-(--primary) p-1.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
         >
-          {isLoadingThemes ? "Loading..." : themeLabel(theme || "Default")}
+          <div className="flex items-center gap-2">
+            <IoIosColorPalette size={20}/>
+            {isLoadingThemes ? "Loading..." : themeLabel(theme || "Default")}
+          </div>
         </button>
 
         {modalOpen && (
