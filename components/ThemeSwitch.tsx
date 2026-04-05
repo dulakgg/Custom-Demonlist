@@ -113,7 +113,7 @@ export default function ThemeSwitch({ className }: { className?: string }) {
           type="button"
           onClick={() => setModalOpen((prev) => !prev)}
           disabled={isLoadingThemes}
-          className="cursor-pointer rounded-full inline border border-(--primary) bg-(--primary) p-1.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
+          className="cursor-pointer rounded-full inline border border-(--primary) bg-(--primary) p-1.5 px-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
         >
           <div className="flex items-center gap-2">
             <IoIosColorPalette size={20}/>

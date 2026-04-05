@@ -11,6 +11,8 @@ type DiscordProfile = {
 type AppJwt = {
   discordId?: string;
   name?: string | null;
+  id?: string;
+  avatar?: string | null;
 };
 
 const discordClientId = process.env.DISCORD_CLIENT_ID;
@@ -52,13 +54,15 @@ export const authOptions: NextAuthOptions = {
           discordProfile?.global_name ||
           discordProfile?.username ||
           `discord-${discordId}`;
+        const avatar = profile?.avatar;
 
         await prisma.user.upsert({
           where: { discordId: String(discordId) },
-          update: { username },
+          update: { username, avatar },
           create: {
             username,
             discordId: String(discordId),
+            avatar,
           },
         });
 
@@ -82,16 +86,37 @@ export const authOptions: NextAuthOptions = {
       const user = await prisma.user.findUnique({
         where: { discordId: appToken.discordId },
         select: {
+          id: true,
           username: true,
+          avatar: true,
         },
       });
 
+      if (appToken.discordId) {
+        appToken.discordId = appToken.discordId;
+      }
       if (user?.username) {
         appToken.name = user.username;
+      }
+      if (user?.id) {
+        appToken.id = user.id;
+      }
+
+      if (user?.avatar) {
+        appToken.avatar = user.avatar;
       }
 
       return appToken;
     },
+
+    async session({ session, token }) {
+      if (session.user) {
+        (session.user as any).id = (token as any).id;
+        (session.user as any).discordId = (token as any).discordId;
+        (session.user as any).avatar = (token as any).avatar;
+      }
+      return session;
+    }
   },
   secret: authSecret,
 };

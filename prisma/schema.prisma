@@ -1,58 +1,59 @@
 generator client {
-	provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
   url      = env("DB_DATABASE_URL")
 }
 
 model User {
-	id        Int      @id @default(autoincrement())
-	username  String
-	discordId String   @unique
-	createdAt DateTime @default(now())
-	updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  username  String
+  discordId String   @unique
+  avatar String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Level {
-	id                Int           @id @default(autoincrement())
-	levelId           Int           @unique
-	levelName         String
-	position          Float
-	legacy            Boolean       @default(false)
-	thumbnailUrl      String
-	aredlId           String?
-	points            Int?
-	twoPlayer         Boolean?
-	tags              String[]
-	description       String?
-	song              Int?
-	edelEnjoyment     Float?
-	isEdelPending     Boolean?
-	gddlTier          Float?
-	nlwTier           String?
-	publisherUsername String?
-	publisherGlobal   String?
-	createdAt         DateTime      @default(now())
-	updatedAt         DateTime      @updatedAt
-	records           LevelRecord[]
+  id                Int           @id @default(autoincrement())
+  levelId           Int           @unique
+  levelName         String
+  position          Float
+  legacy            Boolean       @default(false)
+  thumbnailUrl      String
+  aredlId           String?
+  points            Int?
+  twoPlayer         Boolean?
+  tags              String[]
+  description       String?
+  song              Int?
+  edelEnjoyment     Float?
+  isEdelPending     Boolean?
+  gddlTier          Float?
+  nlwTier           String?
+  publisherUsername String?
+  publisherGlobal   String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  records           LevelRecord[]
 
-	@@map("levels")
+  @@map("levels")
 }
 
 model LevelRecord {
-	id                String   @id
-	levelId           Int
-	playerDisplayName String
-	playerUsername    String
-	isListedPlayer    Boolean
-	completedAt       DateTime?
-	videoUrl          String?
-	createdAt         DateTime @default(now())
-	updatedAt         DateTime @updatedAt
-	level             Level    @relation(fields: [levelId], references: [levelId], onDelete: Cascade)
+  id                String    @id
+  levelId           Int
+  playerDisplayName String
+  playerUsername    String
+  isListedPlayer    Boolean
+  completedAt       DateTime?
+  videoUrl          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  level             Level     @relation(fields: [levelId], references: [levelId], onDelete: Cascade)
 
-	@@index([levelId])
-	@@map("level_records")
+  @@index([levelId])
+  @@map("level_records")
 }
-
