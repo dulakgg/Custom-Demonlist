@@ -95,35 +95,58 @@ export default function ThemeSwitch({ className }: { className?: string }) {
 
     try {
       window.localStorage.setItem(STORAGE_KEY, theme);
-    } catch {}
+    } catch { }
   }, [theme]);
 
   const hasThemes = themes.length > 0;
+
+  const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className={className}>
       <label className="sr-only" htmlFor="theme-select">
         Select theme
       </label>
-      <select
-        id="theme-select"
-        value={hasThemes ? theme : ""}
-        onChange={(event) => setTheme(event.target.value)}
-        disabled={isLoadingThemes || !hasThemes}
-        className="cursor-pointer rounded-full border border-(--primary) bg-(--primary) px-3 py-1.5 pr-8 text-sm font-semibold text-white transition hover:brightness-110 outline-none focus:border-(--secondary) focus:ring-2 focus:ring-[color-mix(in_srgb,var(--secondary)_40%,transparent)] disabled:cursor-wait disabled:opacity-80"
-        title="Theme"
-        aria-label="Theme"
-      >
-        {hasThemes ? (
-          themes.map((name) => (
-            <option key={name} value={name}>
-              {themeLabel(name)}
-            </option>
-          ))
-        ) : (
-          <option value="">No themes found</option>
+      <div className="relative inline-block">
+        <button
+          type="button"
+          onClick={() => setModalOpen((prev) => !prev)}
+          disabled={isLoadingThemes}
+          className="cursor-pointer rounded-full border border-(--primary) bg-(--primary) p-1 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-80"
+        >
+          {isLoadingThemes ? "Loading..." : themeLabel(theme || "Default")}
+        </button>
+
+        {modalOpen && (
+          <div className="absolute right-0 mt-2 w-25 max-w-[calc(100vw-1rem)] rounded-xl border border-(--primary) bg-(--background) shadow-lg p-2 flex flex-col gap-1 z-50">
+
+            {isLoadingThemes ? (
+              <span className="text-sm text-(--text) px-2 py-1">
+                Loading themes...
+              </span>
+            ) : hasThemes ? (
+              themes.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => {
+                    setTheme(name);
+                    setModalOpen(false);
+                  }}
+                  className={`text-center text-(--text) px-3 py-1 rounded-lg hover:bg-(--secondary) transition ${theme === name ? "bg-(--secondary) font-semibold" : ""
+                    }`}
+                >
+                  {themeLabel(name)}
+                </button>
+              ))
+            ) : (
+              <span className="text-sm text-(--text) px-2 py-1">
+                No themes found
+              </span>
+            )}
+
+          </div>
         )}
-      </select>
+      </div>
     </div>
   );
 }
