@@ -18,19 +18,20 @@ const ThemeSwitch = dynamic(() => import("@/components/ThemeSwitch"), {
 export default function SiteNav() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
-
+  const isAuthed = status === "authenticated" && session?.user;
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navItems = [{ href: "/leaderboard", label: "Leaderboard" }];
 
   const nickname = session?.user?.name || "Discord user";
-  const id = (session?.user as any)?.id;
+  const id = isAuthed ? (session.user as any).id : null;
+
+  const user = isAuthed ? session.user : null;
 
   const avatarUrl =
-    (session?.user as any)?.avatar && (session?.user as any)?.discordId
-      ? `https://cdn.discordapp.com/avatars/${
-          (session.user as any).discordId
-        }/${(session.user as any).avatar}.png`
+    user && (user as any).avatar && (user as any).discordId
+      ? `https://cdn.discordapp.com/avatars/${(user as any).discordId
+      }/${(user as any).avatar}.png`
       : "/images/default-avatar.jpg";
 
   return (
@@ -59,11 +60,10 @@ export default function SiteNav() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                    isActive
+                  className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${isActive
                       ? "bg-(--primary) text-white"
                       : "border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_16%,var(--background))] text-(--primary) hover:bg-[color-mix(in_srgb,var(--primary)_26%,var(--background))]"
-                  }`}
+                    }`}
                 >
                   {item.label}
                 </Link>

@@ -6,12 +6,13 @@ type DiscordProfile = {
   id: string;
   username?: string;
   global_name?: string;
+  avatar?: string | null;
 };
 
 type AppJwt = {
   discordId?: string;
   name?: string | null;
-  id?: string;
+  id?: number;
   avatar?: string | null;
 };
 
@@ -54,7 +55,7 @@ export const authOptions: NextAuthOptions = {
           discordProfile?.global_name ||
           discordProfile?.username ||
           `discord-${discordId}`;
-        const avatar = profile?.avatar;
+        const avatar = discordProfile?.avatar;
 
         await prisma.user.upsert({
           where: { discordId: String(discordId) },
