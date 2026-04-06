@@ -10,6 +10,7 @@ datasource db {
 model User {
   id        Int      @id @default(autoincrement())
   username  String
+  discord_username String? @unique
   discordId String   @unique
   avatar String?
   createdAt DateTime @default(now())
