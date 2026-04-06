@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
+import { syncUserProfileFromAredl } from "@/lib/aredlProfileSync";
 
 type DiscordProfile = {
   id: string;
@@ -13,6 +14,12 @@ type AppJwt = {
   discordId?: string;
   name?: string | null;
   id?: number;
+  avatar?: string | null;
+};
+
+type SessionUser = {
+  id?: number;
+  discordId?: string;
   avatar?: string | null;
 };
 
@@ -67,6 +74,21 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
+        // Refresh profile data on login, but do not block auth if AREDL fails.
+        try {
+          const syncResult = await syncUserProfileFromAredl(String(discordId));
+
+          if (syncResult.status === "success") {
+            // Keep cooldown state aligned with this login refresh.
+            await prisma.user.update({
+              where: { id: syncResult.userId },
+              data: { lastProfileRefreshAt: new Date() },
+            });
+          }
+        } catch {
+          // Sign-in should not fail if AREDL is unavailable.
+        }
+
         return true;
       } catch {
         return false;
@@ -93,9 +115,6 @@ export const authOptions: NextAuthOptions = {
         },
       });
 
-      if (appToken.discordId) {
-        appToken.discordId = appToken.discordId;
-      }
       if (user?.username) {
         appToken.name = user.username;
       }
@@ -111,10 +130,13 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
+      const appToken = token as typeof token & AppJwt;
+
       if (session.user) {
-        (session.user as any).id = (token as any).id;
-        (session.user as any).discordId = (token as any).discordId;
-        (session.user as any).avatar = (token as any).avatar;
+        const sessionUser = session.user as typeof session.user & SessionUser;
+        sessionUser.id = appToken.id;
+        sessionUser.discordId = appToken.discordId;
+        sessionUser.avatar = appToken.avatar;
       }
       return session;
     }

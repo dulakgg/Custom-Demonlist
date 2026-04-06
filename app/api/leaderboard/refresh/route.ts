@@ -325,8 +325,8 @@ async function fetchLevelDetails(levelId: number): Promise<LevelDetailsResponse 
   return fetchJsonWithRetry<LevelDetailsResponse>(`${API_BASE}/levels/${levelId}`);
 }
 
-function buildLeaderboardLevels(usernames: string[], profiles: PlayerProfileResponse[]): AggregatedLevel[] {
-  const listedPlayers = new Set(usernames.map((username) => username.toLowerCase()));
+function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: PlayerProfileResponse[]): AggregatedLevel[] {
+  const listedPlayers = new Set(listedPlayerUsernames.map((username) => username.toLowerCase()));
   const levelMap = new Map<number, AggregatedLevel>();
 
   for (const profile of profiles) {
@@ -386,22 +386,49 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
   const reportProgress = createDiscordProgressReporter(DISCORD_REFRESH_WEBHOOK_URL);
 
   try {
-    const usernames = players.map((username) => username.trim()).filter(Boolean);
+    const listedPlayerUsernames = players.map((username) => username.trim()).filter(Boolean);
+    const registeredProfileUsernames = (
+      await prisma.user.findMany({
+        where: {
+          discord_username: {
+            not: null,
+          },
+        },
+        select: {
+          discord_username: true,
+        },
+      })
+    )
+      .map((user) => user.discord_username?.trim() ?? "")
+      .filter(Boolean);
+
+    const profileIdentifiers = [] as string[];
+    const seenProfileIdentifiers = new Set<string>();
+
+    for (const identifier of [...listedPlayerUsernames, ...registeredProfileUsernames]) {
+      const normalized = identifier.toLowerCase();
+      if (seenProfileIdentifiers.has(normalized)) {
+        continue;
+      }
+
+      seenProfileIdentifiers.add(normalized);
+      profileIdentifiers.push(identifier);
+    }
 
     await reportProgress({
       stage: "starting",
-      note: `Queued players: ${usernames.length}`,
+      note: `Queued profiles: ${profileIdentifiers.length} (listed: ${listedPlayerUsernames.length}, users: ${registeredProfileUsernames.length})`,
       force: true,
     });
 
     await sleep(PHASE_PAUSE_MS);
 
     const profileResponses = await mapWithConcurrency(
-      usernames,
+      profileIdentifiers,
       PROFILE_CONCURRENCY,
       async (username) => fetchPlayerProfile(username),
       async (profile, index, completed, total) => {
-        const username = usernames[index] ?? "unknown";
+        const username = profileIdentifiers[index] ?? "unknown";
         await reportProgress({
           stage: "profiles",
           completed,
@@ -415,7 +442,7 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
     await sleep(PHASE_PAUSE_MS);
 
     const profiles = profileResponses.filter((profile): profile is PlayerProfileResponse => profile !== null);
-    const levels = buildLeaderboardLevels(usernames, profiles);
+    const levels = buildLeaderboardLevels(listedPlayerUsernames, profiles);
     const totalRecords = levels.reduce((sum, level) => sum + level.records.length, 0);
 
     const detailResponses = await mapWithConcurrency(
@@ -527,7 +554,7 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
       levels: levels.length,
       records: totalRecords,
       fetchedProfiles: profiles.length,
-      missingProfiles: usernames.length - profiles.length,
+      missingProfiles: profileIdentifiers.length - profiles.length,
       levelsWithDetails: detailsByLevelId.size,
     });
   } catch (error) {

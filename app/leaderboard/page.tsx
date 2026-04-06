@@ -1,9 +1,11 @@
 import LeaderboardClient from "./LeaderboardClient";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
+import { isAdminFromCandidates } from "@/lib/adminPlayers";
+import { getServerSession } from "next-auth";
 
 type LeaderboardRecord = {
   id: string;
-  playerDisplayName: string;
   playerUsername: string;
   isListedPlayer: boolean;
   completedAt: string | undefined;
@@ -21,11 +23,36 @@ type LeaderboardLevel = {
 
 export const dynamic = "force-dynamic";
 
+async function canRunMassRefresh(): Promise<boolean> {
+  // Keep admin-only controls hidden for regular users.
+  const session = await getServerSession(authOptions);
+  const discordId = (session?.user as { discordId?: string } | undefined)?.discordId?.trim();
+
+  if (!discordId) {
+    return false;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { discordId },
+    select: {
+      username: true,
+      discord_username: true,
+    },
+  });
+
+  if (!user) {
+    return false;
+  }
+
+  return isAdminFromCandidates([user.discord_username, user.username]);
+}
+
 async function getLeaderboardLevels(): Promise<LeaderboardLevel[]> {
   const levels = await prisma.level.findMany({
     include: {
       records: {
-        orderBy: [{ completedAt: "desc" }, { id: "asc" }],
+        // Show completions in chronological order.
+        orderBy: [{ completedAt: "asc" }, { id: "asc" }],
       },
     },
     orderBy: [{ position: "asc" }, { levelName: "asc" }],
@@ -39,7 +66,6 @@ async function getLeaderboardLevels(): Promise<LeaderboardLevel[]> {
     thumbnailUrl: level.thumbnailUrl,
     records: level.records.map((record) => ({
       id: record.id,
-      playerDisplayName: record.playerDisplayName,
       playerUsername: record.playerUsername,
       isListedPlayer: record.isListedPlayer,
       completedAt: record.completedAt?.toISOString(),
@@ -49,11 +75,14 @@ async function getLeaderboardLevels(): Promise<LeaderboardLevel[]> {
 }
 
 export default async function LeaderboardPage() {
-  const levels = await getLeaderboardLevels();
+  const [levels, canMassRefresh] = await Promise.all([
+    getLeaderboardLevels(),
+    canRunMassRefresh(),
+  ]);
 
   return (
     <main className="min-h-dvh px-2 pb-4 pt-1 text-(--text) md:px-3 md:pb-6 md:pt-1">
-      <LeaderboardClient levels={levels} />
+      <LeaderboardClient levels={levels} canMassRefresh={canMassRefresh} />
     </main>
   );
 }

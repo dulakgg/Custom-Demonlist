@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { FaCrown } from "react-icons/fa6";
 
 type LeaderboardRecord = {
   id: string;
-  playerDisplayName: string;
   playerUsername: string;
   isListedPlayer: boolean;
   completedAt: string | undefined;
@@ -46,6 +47,7 @@ type LevelDetails = {
 
 type Props = {
   levels: LeaderboardLevel[];
+  canMassRefresh: boolean;
 };
 
 function youtubeEmbed(url: string | null | undefined): string | null {
@@ -84,6 +86,16 @@ function formatRoundedNumber(value: number | null | undefined): string {
   }
 
   return String(Math.round(value));
+}
+
+function profileHrefFromUsername(username: string): string {
+  const trimmed = username.trim();
+  if (!trimmed) {
+    return "/profiles";
+  }
+
+  // Resolve by username on the server, then redirect to numeric profile id.
+  return `/profile/username/${encodeURIComponent(trimmed)}`;
 }
 
 function detailRows(level: LeaderboardLevel, displayPosition: number, aredlPosition: number, details?: LevelDetails) {
@@ -289,14 +301,22 @@ function LevelDetailsPanel({
             <p className="text-sm text-[color-mix(in_srgb,var(--text)_72%,transparent)]">No records available for this level.</p>
           ) : (
             <ul className="grid max-h-55 list-none gap-1.5 overflow-auto p-0 pr-1">
+              {/* Records come from server already sorted oldest to newest. */}
               {level.records.map((record) => {
                 const active = selectedRecord?.id === record.id;
 
                 return (
                   <li key={record.id}>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onRecordSelect(record.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onRecordSelect(record.id);
+                        }
+                      }}
                       className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
                         active
                           ? "border-(--primary) bg-(--primary) text-white"
@@ -311,12 +331,19 @@ function LevelDetailsPanel({
                             aria-label="Listed player"
                           />
                         ) : null}
-                        <span className={`truncate ${active ? "text-white" : "text-(--text)"}`}>{record.playerDisplayName}</span>
+                        <Link
+                          href={profileHrefFromUsername(record.playerUsername)}
+                          onClick={(event) => event.stopPropagation()}
+                          className={`truncate underline-offset-2 hover:underline ${active ? "text-white" : "text-(--text)"}`}
+                          title="Open profile"
+                        >
+                          {record.playerUsername}
+                        </Link>
                       </span>
                       <span className={`shrink-0 ${active ? "text-[color-mix(in_srgb,white_82%,transparent)]" : "text-[color-mix(in_srgb,var(--text)_72%,transparent)]"}`}>
                         {formatDate(record.completedAt)}
                       </span>
-                    </button>
+                    </div>
                   </li>
                 );
               })}
@@ -372,7 +399,8 @@ function LevelDetailsPanel({
   );
 }
 
-export default function LeaderboardClient({ levels }: Props) {
+export default function LeaderboardClient({ levels, canMassRefresh }: Props) {
+  const router = useRouter();
   const prefersReducedMotion = useReducedMotion();
   const [selectedLevelId, setSelectedLevelId] = useState<number | null>(levels[0]?.levelId ?? null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
@@ -380,6 +408,8 @@ export default function LeaderboardClient({ levels }: Props) {
   const [loadingInfoByLevelId, setLoadingInfoByLevelId] = useState<Record<number, boolean>>({});
   const [detailsErrorByLevelId, setDetailsErrorByLevelId] = useState<Record<number, string>>({});
   const [tabByLevelId, setTabByLevelId] = useState<Record<number, DetailTab>>({});
+  const [isMassRefreshing, setIsMassRefreshing] = useState(false);
+  const [massRefreshMessage, setMassRefreshMessage] = useState<string | null>(null);
   const inFlightDetailRequests = useRef<Set<number>>(new Set());
 
   const selectedLevel = useMemo(
@@ -504,6 +534,31 @@ export default function LeaderboardClient({ levels }: Props) {
     }
   }
 
+  async function handleMassRefresh() {
+    setIsMassRefreshing(true);
+    setMassRefreshMessage(null);
+
+    try {
+      const response = await fetch("/api/refresh/mass", {
+        method: "POST",
+        cache: "no-store",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+      const message = payload?.message?.trim() || "Mass refresh failed.";
+
+      setMassRefreshMessage(message);
+
+      if (response.ok) {
+        router.refresh();
+      }
+    } catch {
+      setMassRefreshMessage("Mass refresh failed.");
+    } finally {
+      setIsMassRefreshing(false);
+    }
+  }
+
   function renderLevelRow(level: LeaderboardLevel, index: number) {
     const isActive = selectedLevelId === level.levelId;
     const levelDetails = detailsByLevelId[level.levelId];
@@ -554,6 +609,22 @@ export default function LeaderboardClient({ levels }: Props) {
         <header className="rounded-2xl border border-(--border) bg-[color-mix(in_srgb,var(--background)_88%,transparent)] p-4 shadow-[0_18px_40px_color-mix(in_srgb,var(--primary)_16%,transparent)] backdrop-blur-md">
           <p className="m-0 text-[11px] uppercase tracking-[0.16em] text-(--accent)">Custom demonlist</p>
           <h1 className="m-0 mt-1 text-[clamp(1.3rem,2.6vw,2.5rem)] leading-[0.95] text-(--text)">Leaderboard</h1>
+
+          {canMassRefresh ? (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={handleMassRefresh}
+                disabled={isMassRefreshing}
+                className="cursor-pointer rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_16%,var(--background))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.11em] text-(--primary) transition hover:bg-[color-mix(in_srgb,var(--primary)_24%,var(--background))] disabled:cursor-not-allowed disabled:opacity-65"
+              >
+                {isMassRefreshing ? "Refreshing..." : "Mass Refresh LB + Profiles"}
+              </button>
+              {massRefreshMessage ? (
+                <p className="m-0 text-xs text-[color-mix(in_srgb,var(--text)_72%,transparent)]">{massRefreshMessage}</p>
+              ) : null}
+            </div>
+          ) : null}
         </header>
 
         <div className="mt-4 flex flex-col gap-2.5" aria-label="Current list">

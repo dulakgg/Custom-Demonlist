@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signIn, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import { HiMenu, HiX } from "react-icons/hi";
 
@@ -15,24 +15,52 @@ const ThemeSwitch = dynamic(() => import("@/components/ThemeSwitch"), {
   ),
 });
 
+type SessionUser = {
+  id?: number | string;
+  name?: string | null;
+  discordId?: string;
+  avatar?: string | null;
+};
+
 export default function SiteNav() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const isAuthed = status === "authenticated" && session?.user;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
+  const desktopMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const navItems = [{ href: "/leaderboard", label: "Leaderboard" }];
+  const navItems = [
+    { href: "/leaderboard", label: "List" },
+    { href: "/profiles", label: "Leaderboard" },
+  ];
 
-  const nickname = session?.user?.name || "Discord user";
-  const id = isAuthed ? (session.user as any).id : null;
-
-  const user = isAuthed ? session.user : null;
+  const user = isAuthed ? (session.user as SessionUser) : null;
+  const nickname = user?.name || "Discord user";
+  const id = user?.id ?? null;
 
   const avatarUrl =
-    user && (user as any).avatar && (user as any).discordId
-      ? `https://cdn.discordapp.com/avatars/${(user as any).discordId
-      }/${(user as any).avatar}.png`
+    user?.avatar && user.discordId
+      ? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png`
       : "/images/default-avatar.jpg";
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (!desktopMenuRef.current) {
+        return;
+      }
+
+      const target = event.target as Node | null;
+      if (target && !desktopMenuRef.current.contains(target)) {
+        setDesktopMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+    };
+  }, []);
 
   return (
     <header className=" top-0 z-50 relative border-b border-(--border) bg-[color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
@@ -74,20 +102,45 @@ export default function SiteNav() {
             {status === "loading" ? (
               <div className="h-9 w-20 animate-pulse rounded-full border border-(--border)" />
             ) : status === "authenticated" ? (
-              <div className="flex">
-                <Link
-                  href={`/profile/${id}`}
-                  className="hidden rounded-l-full border border-(--border) p-1.5 px-3 text-sm md:inline-flex"
+              <div className="relative" ref={desktopMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setDesktopMenuOpen((value) => !value)}
+                  className="flex cursor-pointer items-center"
                 >
-                  {nickname}
-                </Link>
-                <Image
-                  src={avatarUrl}
-                  alt="User avatar"
-                  width={32}
-                  height={32}
-                  className="rounded-r-full"
-                />
+                  <span className="inline-flex h-9 items-center rounded-l-full border border-(--border) border-r-0 bg-[color-mix(in_srgb,var(--background)_90%,transparent)] px-3 text-sm">
+                    {nickname}
+                  </span>
+                  <Image
+                    src={avatarUrl}
+                    alt="User avatar"
+                    width={36}
+                    height={36}
+                    className="rounded-r-full border border-(--border)"
+                  />
+                </button>
+
+                {desktopMenuOpen ? (
+                  <div className="absolute right-0 z-50 mt-2 flex w-25 max-w-[calc(100vw-1rem)] flex-col gap-1 rounded-xl border border-(--primary) bg-(--background) p-2 shadow-lg">
+                    <Link
+                      href={id ? `/profile/${id}` : "/login"}
+                      onClick={() => setDesktopMenuOpen(false)}
+                      className="rounded-lg px-3 py-1 text-center text-(--text) transition hover:bg-(--secondary)"
+                    >
+                      Profile
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDesktopMenuOpen(false);
+                        signOut({ callbackUrl: "/login" });
+                      }}
+                      className="cursor-pointer rounded-lg px-3 py-1 text-center text-(--text) transition hover:bg-(--secondary)"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <button
@@ -130,19 +183,40 @@ export default function SiteNav() {
             {status === "loading" ? (
               <div className="h-9 w-full animate-pulse rounded-full border border-(--border)" />
             ) : status === "authenticated" ? (
-              <div className="flex items-center justify-between rounded-full border border-(--border) px-3 py-2">
-                <span className="text-sm">{nickname}</span>
-
-                <Image
-                  src={avatarUrl}
-                  alt="User avatar"
-                  width={28}
-                  height={28}
-                  className="rounded-full"
-                />
+              <div className="rounded-xl border border-(--border) p-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-sm">{nickname}</span>
+                  <Image
+                    src={avatarUrl}
+                    alt="User avatar"
+                    width={28}
+                    height={28}
+                    className="rounded-full"
+                  />
+                </div>
+                <div className="mt-2 grid gap-1">
+                  <Link
+                    href={id ? `/profile/${id}` : "/login"}
+                    onClick={() => setMobileOpen(false)}
+                    className="rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text)"
+                  >
+                    Profile
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileOpen(false);
+                      signOut({ callbackUrl: "/login" });
+                    }}
+                    className="cursor-pointer rounded-lg border border-(--border) px-3 py-2 text-left text-sm text-(--text)"
+                  >
+                    Sign out
+                  </button>
+                </div>
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => {
                   setMobileOpen(false);
                   signIn("discord", { callbackUrl: "/" });

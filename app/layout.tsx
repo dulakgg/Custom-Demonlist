@@ -20,8 +20,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Custom Demonlist",
-  description: "Custom demonlist description lol",
+  title: "Measurement of tuffness demonlist",
+  description: "Tuffest demonlist for Geometry Dash. Compete for the top spot by completing demons that are tuff according to us!",
 };
 
 const DEFAULT_THEME = "bacon";
