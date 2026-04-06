@@ -1,0 +1,7 @@
+:root[data-theme="7"] {
+    --text: oklch(0 0 0);
+    --background: oklch(0.79 0.26 330.78);
+    --primary: oklch(0.86 0.14 323.92);
+    --secondary: oklch(1 0 0);
+    --accent: oklch(0 0 0);
+}
