@@ -1,0 +1,7 @@
+:root[data-theme="skeepye"] {
+    --text: #ffffff;
+    --background: #002d0f;
+    --primary: #5F8575;
+    --secondary: #355E3B;
+    --accent: #00A36C;
+}
