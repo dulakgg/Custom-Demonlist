@@ -3,8 +3,7 @@ import Link from "next/link";
 import { FaCrown } from "react-icons/fa6";
 import { isAdminFromCandidates } from "@/lib/adminPlayers";
 import { getProfilesLeaderboard } from "@/lib/profileLeaderboard";
-
-export const dynamic = "force-dynamic";
+import { profileByIdRoute } from "@/lib/routes";
 
 function avatarUrl(discordId: string, avatar: string | null): string {
   return avatar
@@ -49,7 +48,8 @@ export default async function ProfilesPage() {
                           className="rounded-full border border-(--border)"
                         />
                         <Link
-                          href={`/profile/${entry.userId}`}
+                          href={profileByIdRoute(entry.userId)}
+                          prefetch={false}
                           className="truncate text-sm font-semibold text-(--text) underline-offset-2 hover:underline"
                         >
                           {entry.username}

@@ -5,6 +5,7 @@ import Script from "next/script";
 import "./globals.css";
 import SiteNav from "@/components/SiteNav";
 import Providers from "@/app/providers";
+import { themeStylesheetRoute } from "@/lib/routes";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -89,7 +90,7 @@ export default async function RootLayout({
       className={`${inter.variable} ${poppins.variable} h-full antialiased`}
     >
       <head>
-        <link rel="stylesheet" href={`/themes/${initialTheme}.css`} data-theme-sheet="1" />
+        <link rel="stylesheet" href={themeStylesheetRoute(initialTheme)} data-theme-sheet="1" />
         <Script id="theme-bootstrap" strategy="beforeInteractive">
           {buildThemeBootstrapScript(initialTheme)}
         </Script>

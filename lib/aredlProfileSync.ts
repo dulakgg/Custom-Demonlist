@@ -13,6 +13,7 @@ export type CompletionRecord = {
     name: string;
     position: number;
     points?: number | null;
+    two_player?: boolean | null;
     legacy?: boolean;
   };
 };
@@ -64,6 +65,14 @@ function toSafeLevelId(value: number | null | undefined): number | null {
 
   const rounded = Math.round(value);
   return rounded > 0 ? rounded : null;
+}
+
+function toSafeInt(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.round(value);
 }
 
 async function fetchPlayerProfile(identifier: string): Promise<PlayerProfileResponse | null> {
@@ -138,6 +147,14 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
       completedAt: Date | null;
       videoUrl: string | null;
     }>;
+    const candidateLevelMetadataById = new Map<
+      number,
+      {
+        levelName: string | null;
+        points: number | null;
+        twoPlayer: boolean | null;
+      }
+    >();
     const candidateLevelIds = new Set<number>();
 
     for (const record of profile.records ?? []) {
@@ -147,6 +164,18 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
       if (!recordId || !levelId) {
         continue;
       }
+
+      const levelName = normalizeUsername(record.level?.name);
+      const levelPoints = toSafeInt(record.level?.points);
+      const twoPlayerValue = record.level?.two_player;
+      const twoPlayer = typeof twoPlayerValue === "boolean" ? twoPlayerValue : null;
+
+      const previousMetadata = candidateLevelMetadataById.get(levelId);
+      candidateLevelMetadataById.set(levelId, {
+        levelName: levelName ?? previousMetadata?.levelName ?? null,
+        points: levelPoints ?? previousMetadata?.points ?? null,
+        twoPlayer: twoPlayer ?? previousMetadata?.twoPlayer ?? null,
+      });
 
       candidateLevelIds.add(levelId);
       candidateRecordRows.push({
@@ -168,11 +197,41 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
       },
       select: {
         levelId: true,
+        levelName: true,
+        points: true,
+        twoPlayer: true,
       },
     });
 
     const allowedLevelIds = new Set(existingLevels.map((level) => level.levelId));
     const recordRows = candidateRecordRows.filter((row) => allowedLevelIds.has(row.levelId));
+    const levelMetadataUpdates = existingLevels
+      .map((level) => {
+        const metadata = candidateLevelMetadataById.get(level.levelId);
+        if (!metadata) {
+          return null;
+        }
+
+        const nextLevelName = metadata.levelName ?? level.levelName;
+        const nextPoints = metadata.points ?? level.points;
+        const nextTwoPlayer = metadata.twoPlayer ?? level.twoPlayer;
+
+        if (
+          nextLevelName === level.levelName
+          && nextPoints === level.points
+          && nextTwoPlayer === level.twoPlayer
+        ) {
+          return null;
+        }
+
+        return {
+          levelId: level.levelId,
+          levelName: nextLevelName,
+          points: nextPoints,
+          twoPlayer: nextTwoPlayer,
+        };
+      })
+      .filter((update): update is { levelId: number; levelName: string; points: number | null; twoPlayer: boolean | null } => update !== null);
 
     const usernamesToReplace = Array.from(
       new Set([normalizeUsername(user.discord_username), profileUsername].filter((value): value is string => Boolean(value))),
@@ -185,6 +244,19 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
           discord_username: profileUsername,
         },
       });
+
+      for (const update of levelMetadataUpdates) {
+        await tx.level.update({
+          where: {
+            levelId: update.levelId,
+          },
+          data: {
+            levelName: update.levelName,
+            points: update.points,
+            twoPlayer: update.twoPlayer,
+          },
+        });
+      }
 
       if (usernamesToReplace.length > 0) {
         await tx.levelRecord.deleteMany({

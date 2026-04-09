@@ -2,6 +2,8 @@ import LeaderboardClient from "./LeaderboardClient";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { isAdminFromCandidates } from "@/lib/adminPlayers";
+import { CACHE_TAGS } from "@/lib/routes";
+import { unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth";
 
 type LeaderboardRecord = {
@@ -21,7 +23,39 @@ type LeaderboardLevel = {
   records: LeaderboardRecord[];
 };
 
-export const dynamic = "force-dynamic";
+const getCachedLeaderboardLevels = unstable_cache(
+  async (): Promise<LeaderboardLevel[]> => {
+    const levels = await prisma.level.findMany({
+      include: {
+        records: {
+          // Show completions in chronological order.
+          orderBy: [{ completedAt: "asc" }, { id: "asc" }],
+        },
+      },
+      orderBy: [{ position: "asc" }, { levelName: "asc" }],
+    });
+
+    return levels.map((level) => ({
+      levelId: level.levelId,
+      levelName: level.levelName,
+      position: level.position,
+      legacy: level.legacy,
+      thumbnailUrl: level.thumbnailUrl,
+      records: level.records.map((record) => ({
+        id: record.id,
+        playerUsername: record.playerUsername,
+        isListedPlayer: record.isListedPlayer,
+        completedAt: record.completedAt?.toISOString(),
+        videoUrl: record.videoUrl,
+      })),
+    }));
+  },
+  [CACHE_TAGS.leaderboardLevels],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.leaderboardLevels],
+  },
+);
 
 async function canRunMassRefresh(): Promise<boolean> {
   // Keep admin-only controls hidden for regular users.
@@ -48,30 +82,7 @@ async function canRunMassRefresh(): Promise<boolean> {
 }
 
 async function getLeaderboardLevels(): Promise<LeaderboardLevel[]> {
-  const levels = await prisma.level.findMany({
-    include: {
-      records: {
-        // Show completions in chronological order.
-        orderBy: [{ completedAt: "asc" }, { id: "asc" }],
-      },
-    },
-    orderBy: [{ position: "asc" }, { levelName: "asc" }],
-  });
-
-  return levels.map((level) => ({
-    levelId: level.levelId,
-    levelName: level.levelName,
-    position: level.position,
-    legacy: level.legacy,
-    thumbnailUrl: level.thumbnailUrl,
-    records: level.records.map((record) => ({
-      id: record.id,
-      playerUsername: record.playerUsername,
-      isListedPlayer: record.isListedPlayer,
-      completedAt: record.completedAt?.toISOString(),
-      videoUrl: record.videoUrl,
-    })),
-  }));
+  return getCachedLeaderboardLevels();
 }
 
 export default async function LeaderboardPage() {

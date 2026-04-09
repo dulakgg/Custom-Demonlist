@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 export default function Home() {
   return (
@@ -11,7 +12,7 @@ export default function Home() {
           look at our hardest completions so skeep and coldy
         </p>
         <Link
-          href="/leaderboard"
+          href={ROUTES.leaderboard}
           className="mt-8 rounded-full border border-(--primary) bg-(--primary) px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.12em] text-white transition hover:brightness-110"
         >
           Open List

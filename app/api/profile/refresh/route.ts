@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -7,6 +7,7 @@ import { syncUserProfileFromAredl } from "@/lib/aredlProfileSync";
 import { prisma } from "@/lib/prisma";
 import players from "@/players.json";
 import { isAdminFromCandidates } from "@/lib/adminPlayers";
+import { CACHE_TAGS, profileByIdRoute, ROUTES } from "@/lib/routes";
 
 type SessionUser = {
   discordId?: string;
@@ -245,8 +246,11 @@ async function refreshOwnProfile(request: NextRequest) {
     },
   });
 
-  revalidatePath(`/profile/${result.userId}`);
-  revalidatePath("/leaderboard");
+  revalidateTag(CACHE_TAGS.profilesLeaderboard, "max");
+  revalidateTag(CACHE_TAGS.leaderboardLevels, "max");
+  revalidatePath(profileByIdRoute(result.userId));
+  revalidatePath(ROUTES.leaderboard);
+  revalidatePath(ROUTES.profiles);
 
   await reportProgress(
     "done",

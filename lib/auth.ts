@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { prisma } from "@/lib/prisma";
 import { syncUserProfileFromAredl } from "@/lib/aredlProfileSync";
+import { ROUTES } from "@/lib/routes";
 
 type DiscordProfile = {
   id: string;
@@ -43,7 +44,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   pages: {
-    signIn: "/login",
+    signIn: ROUTES.login,
   },
   session: {
     strategy: "jwt",

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { ROUTES } from "@/lib/routes";
 
 export default function LoginPage() {
 	const { data: session, status } = useSession();
@@ -22,12 +23,12 @@ export default function LoginPage() {
 				<h1 className="text-2xl font-bold">You are signed in</h1>
 				<p className="text-sm opacity-80">Logged in as {nickname}.</p>
 				<div className="flex items-center gap-3">
-					<Link href="/" className="rounded-lg bg-black px-5 py-3 text-white transition hover:opacity-90">
+					<Link href={ROUTES.home} className="rounded-lg bg-black px-5 py-3 text-white transition hover:opacity-90">
 						Go to home
 					</Link>
 					<button
 						type="button"
-						onClick={() => signOut({ callbackUrl: "/login" })}
+						onClick={() => signOut({ callbackUrl: ROUTES.login })}
 						className="rounded-lg border border-(--border) px-5 py-3 text-(--text)"
 					>
 						Sign out
@@ -43,7 +44,7 @@ export default function LoginPage() {
 			<p className="text-sm opacity-80">Use your Discord account to continue.</p>
 			<button
 				type="button"
-				onClick={() => signIn("discord", { callbackUrl: "/" })}
+				onClick={() => signIn("discord", { callbackUrl: ROUTES.home })}
 				className="rounded-lg bg-black px-5 py-3 text-white transition hover:opacity-90"
 			>
 				Continue with Discord

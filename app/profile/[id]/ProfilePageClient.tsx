@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FaCrown } from "react-icons/fa6";
+import { profileRefreshApiRoute } from "@/lib/routes";
 
 type User = {
   id: number;
@@ -24,6 +25,7 @@ type ProfileRecord = {
     levelName: string;
     position: number;
     points: number | null;
+    twoPlayer: boolean | null;
     legacy: boolean;
     thumbnailUrl: string;
   };
@@ -57,6 +59,14 @@ function formatDate(value: string | null): string {
   }).format(parsed);
 }
 
+function isTwoPlayerRecord(record: ProfileRecord): boolean {
+  if (typeof record.level.twoPlayer === "boolean") {
+    return record.level.twoPlayer;
+  }
+
+  return /\(2p\)/i.test(record.level.levelName);
+}
+
 export default function ProfilePageClient({
   user,
   records,
@@ -81,7 +91,7 @@ export default function ProfilePageClient({
 
     try {
       // Allow admins to refresh viewed profiles; own profile still works too.
-      const response = await fetch(`/api/profile/refresh?discordId=${encodeURIComponent(user.discordId)}`, {
+      const response = await fetch(profileRefreshApiRoute(user.discordId), {
         method: "POST",
         cache: "no-store",
       });
@@ -180,7 +190,10 @@ export default function ProfilePageClient({
         ) : (
           <ul className="mt-3 grid list-none gap-2.5 p-0">
             {/* Records are pre-sorted on the server by local leaderboard rank. */}
-            {records.map((record, index) => (
+            {records.map((record, index) => {
+              const twoPlayerLabel = isTwoPlayerRecord(record) ? "2P" : "Solo";
+
+              return (
               <li
                 key={record.id}
                 className="overflow-hidden rounded-lg border border-(--border) bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] shadow-[0_10px_22px_color-mix(in_srgb,var(--primary)_16%,transparent)]"
@@ -214,6 +227,9 @@ export default function ProfilePageClient({
                       <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
                         {record.level.points ?? 0} pts
                       </span>
+                      <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
+                        {twoPlayerLabel}
+                      </span>
                     </div>
                   </div>
 
@@ -234,7 +250,8 @@ export default function ProfilePageClient({
                   </div>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </article>

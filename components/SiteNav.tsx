@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import { HiMenu, HiX } from "react-icons/hi";
+import { profileByIdRoute, ROUTES } from "@/lib/routes";
 
 const ThemeSwitch = dynamic(() => import("@/components/ThemeSwitch"), {
   ssr: false,
@@ -31,8 +32,8 @@ export default function SiteNav() {
   const desktopMenuRef = useRef<HTMLDivElement | null>(null);
 
   const navItems = [
-    { href: "/leaderboard", label: "List" },
-    { href: "/profiles", label: "Leaderboard" },
+    { href: ROUTES.leaderboard, label: "List" },
+    { href: ROUTES.profiles, label: "Leaderboard" },
   ];
 
   const user = isAuthed ? (session.user as SessionUser) : null;
@@ -70,7 +71,7 @@ export default function SiteNav() {
       >
         {/* LOGO */}
         <Link
-          href="/"
+          href={ROUTES.home}
           className="flex items-center gap-2 text-4xl mr-5 uppercase tracking-[0.16em] text-(--accent)"
         >
           MOTD
@@ -123,7 +124,7 @@ export default function SiteNav() {
                 {desktopMenuOpen ? (
                   <div className="absolute right-0 z-50 mt-2 flex w-25 max-w-[calc(100vw-1rem)] flex-col gap-1 rounded-xl border border-(--primary) bg-(--background) p-2 shadow-lg">
                     <Link
-                      href={id ? `/profile/${id}` : "/login"}
+                      href={id ? profileByIdRoute(id) : ROUTES.login}
                       onClick={() => setDesktopMenuOpen(false)}
                       className="rounded-lg px-3 py-1 text-center text-(--text) transition hover:bg-(--secondary)"
                     >
@@ -133,7 +134,7 @@ export default function SiteNav() {
                       type="button"
                       onClick={() => {
                         setDesktopMenuOpen(false);
-                        signOut({ callbackUrl: "/login" });
+                        signOut({ callbackUrl: ROUTES.login });
                       }}
                       className="cursor-pointer rounded-lg px-3 py-1 text-center text-(--text) transition hover:bg-(--secondary)"
                     >
@@ -145,7 +146,7 @@ export default function SiteNav() {
             ) : (
               <button
                 type="button"
-                onClick={() => signIn("discord", { callbackUrl: "/" })}
+                onClick={() => signIn("discord", { callbackUrl: ROUTES.home })}
                 className="rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_16%,var(--background))] px-3 py-1.5 text-sm font-semibold text-(--primary) hover:bg-[color-mix(in_srgb,var(--primary)_26%,var(--background))]"
               >
                 Login
@@ -196,7 +197,7 @@ export default function SiteNav() {
                 </div>
                 <div className="mt-2 grid gap-1">
                   <Link
-                    href={id ? `/profile/${id}` : "/login"}
+                    href={id ? profileByIdRoute(id) : ROUTES.login}
                     onClick={() => setMobileOpen(false)}
                     className="rounded-lg border border-(--border) px-3 py-2 text-sm text-(--text)"
                   >
@@ -206,7 +207,7 @@ export default function SiteNav() {
                     type="button"
                     onClick={() => {
                       setMobileOpen(false);
-                      signOut({ callbackUrl: "/login" });
+                      signOut({ callbackUrl: ROUTES.login });
                     }}
                     className="cursor-pointer rounded-lg border border-(--border) px-3 py-2 text-left text-sm text-(--text)"
                   >
@@ -219,7 +220,7 @@ export default function SiteNav() {
                 type="button"
                 onClick={() => {
                   setMobileOpen(false);
-                  signIn("discord", { callbackUrl: "/" });
+                  signIn("discord", { callbackUrl: ROUTES.home });
                 }}
                 className="rounded-full border border-(--primary) px-3 py-2 text-sm text-(--primary)"
               >

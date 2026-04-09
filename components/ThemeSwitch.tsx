@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { IoIosColorPalette } from "react-icons/io";
+import { API_ROUTES, themeStylesheetRoute } from "@/lib/routes";
 
 type ThemeListResponse = {
   themes?: string[];
@@ -25,7 +26,7 @@ function applyTheme(theme: string) {
     document.head.appendChild(link);
   }
 
-  const href = `/themes/${encodeURIComponent(theme)}.css`;
+  const href = themeStylesheetRoute(theme);
   if (link.getAttribute("href") !== href) {
     link.setAttribute("href", href);
   }
@@ -46,7 +47,7 @@ export default function ThemeSwitch({ className }: { className?: string }) {
       setIsLoadingThemes(true);
 
       try {
-        const response = await fetch("/api/themes", { cache: "no-store" });
+        const response = await fetch(API_ROUTES.themes, { cache: "no-store" });
         if (!response.ok) {
           throw new Error("Failed to load themes");
         }

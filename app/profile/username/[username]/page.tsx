@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
+import { profileByIdRoute } from "@/lib/routes";
 
 type Props = {
   params: Promise<{ username: string }>;
 };
-
-export const dynamic = "force-dynamic";
 
 export default async function ProfileUsernameRedirectPage({ params }: Props) {
   const { username } = await params;
@@ -46,5 +45,5 @@ export default async function ProfileUsernameRedirectPage({ params }: Props) {
   }
 
   // Canonical profile pages are id-based.
-  redirect(`/profile/${user.id}`);
+  redirect(profileByIdRoute(user.id));
 }

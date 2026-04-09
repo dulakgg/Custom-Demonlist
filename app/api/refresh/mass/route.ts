@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { isAdminFromCandidates } from "@/lib/adminPlayers";
 import { prisma } from "@/lib/prisma";
+import { API_ROUTES } from "@/lib/routes";
 
 type SessionUser = {
   discordId?: string;
@@ -43,7 +44,7 @@ async function runMassRefresh(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ message: "Missing LEADERBOARD_REFRESH_SECRET." }, { status: 500 });
   }
 
-  const refreshUrl = new URL("/api/leaderboard/refresh", request.url);
+  const refreshUrl = new URL(API_ROUTES.leaderboardRefresh, request.url);
 
   const refreshResponse = await fetch(refreshUrl, {
     method: "POST",

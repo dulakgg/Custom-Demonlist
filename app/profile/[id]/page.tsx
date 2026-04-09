@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { isAdminFromCandidates } from "@/lib/adminPlayers";
 import { getProfilesLeaderboard } from "@/lib/profileLeaderboard";
+import { CACHE_TAGS } from "@/lib/routes";
+import { unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import ProfilePageClient from "./ProfilePageClient";
@@ -10,7 +12,21 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
-export const dynamic = "force-dynamic";
+const getCachedLeaderboardLevelOrder = unstable_cache(
+  async () => {
+    return prisma.level.findMany({
+      select: {
+        levelId: true,
+      },
+      orderBy: [{ legacy: "asc" }, { position: "asc" }, { levelName: "asc" }],
+    });
+  },
+  ["profile-page-level-order", CACHE_TAGS.leaderboardLevels],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.leaderboardLevels],
+  },
+);
 
 export default async function ProfilePage({ params }: Props) {
   const { id } = await params;
@@ -35,36 +51,32 @@ export default async function ProfilePage({ params }: Props) {
 
   const isAdminProfile = isAdminFromCandidates([user.discord_username, user.username]);
 
-  const profileRecords = user.discord_username
-    ? await prisma.levelRecord.findMany({
-        where: {
-          playerUsername: {
-            equals: user.discord_username,
-            mode: "insensitive",
-          },
-        },
-        include: {
-          level: {
-            select: {
-              levelId: true,
-              levelName: true,
-              position: true,
-              points: true,
-              legacy: true,
-              thumbnailUrl: true,
+  const [profileRecords, leaderboardLevelOrder] = await Promise.all([
+    user.discord_username
+      ? prisma.levelRecord.findMany({
+          where: {
+            playerUsername: {
+              equals: user.discord_username,
+              mode: "insensitive",
             },
           },
-        },
-      })
-    : [];
-
-  // Build the same local leaderboard order used on the main page.
-  const leaderboardLevelOrder = await prisma.level.findMany({
-    select: {
-      levelId: true,
-    },
-    orderBy: [{ legacy: "asc" }, { position: "asc" }, { levelName: "asc" }],
-  });
+          include: {
+            level: {
+              select: {
+                levelId: true,
+                levelName: true,
+                position: true,
+                points: true,
+                twoPlayer: true,
+                legacy: true,
+                thumbnailUrl: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    getCachedLeaderboardLevelOrder(),
+  ]);
 
   const leaderboardRankByLevelId = new Map<number, number>();
   for (const [index, level] of leaderboardLevelOrder.entries()) {
@@ -135,6 +147,7 @@ export default async function ProfilePage({ params }: Props) {
           levelName: record.level.levelName,
           position: record.level.position,
           points: record.level.points,
+          twoPlayer: record.level.twoPlayer,
           legacy: record.level.legacy,
           thumbnailUrl: record.level.thumbnailUrl,
         },

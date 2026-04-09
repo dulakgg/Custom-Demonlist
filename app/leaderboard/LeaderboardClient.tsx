@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { FaCrown } from "react-icons/fa6";
+import { API_ROUTES, aredlLevelApiRoute, profileByUsernameRoute } from "@/lib/routes";
 
 type LeaderboardRecord = {
   id: string;
@@ -86,16 +87,6 @@ function formatRoundedNumber(value: number | null | undefined): string {
   }
 
   return String(Math.round(value));
-}
-
-function profileHrefFromUsername(username: string): string {
-  const trimmed = username.trim();
-  if (!trimmed) {
-    return "/profiles";
-  }
-
-  // Resolve by username on the server, then redirect to numeric profile id.
-  return `/profile/username/${encodeURIComponent(trimmed)}`;
 }
 
 function detailRows(level: LeaderboardLevel, displayPosition: number, aredlPosition: number, details?: LevelDetails) {
@@ -332,7 +323,8 @@ function LevelDetailsPanel({
                           />
                         ) : null}
                         <Link
-                          href={profileHrefFromUsername(record.playerUsername)}
+                          href={profileByUsernameRoute(record.playerUsername)}
+                          prefetch={false}
                           onClick={(event) => event.stopPropagation()}
                           className={`truncate underline-offset-2 hover:underline ${active ? "text-white" : "text-(--text)"}`}
                           title="Open profile"
@@ -481,7 +473,7 @@ export default function LeaderboardClient({ levels, canMassRefresh }: Props) {
     });
 
     try {
-      const response = await fetch(`/api/aredl/levels/${levelId}`, { cache: "force-cache" });
+      const response = await fetch(aredlLevelApiRoute(levelId), { cache: "force-cache" });
       if (!response.ok) {
         throw new Error("Failed to load level details");
       }
@@ -539,7 +531,7 @@ export default function LeaderboardClient({ levels, canMassRefresh }: Props) {
     setMassRefreshMessage(null);
 
     try {
-      const response = await fetch("/api/refresh/mass", {
+      const response = await fetch(API_ROUTES.massRefresh, {
         method: "POST",
         cache: "no-store",
       });

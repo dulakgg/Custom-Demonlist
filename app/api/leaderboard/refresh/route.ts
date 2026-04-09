@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CACHE_TAGS, ROUTES } from "@/lib/routes";
 import players from "../../../../players.json";
 
 const API_BASE = "https://api.aredl.net/v2/api/aredl";
@@ -26,7 +27,9 @@ type CompletionRecord = {
     level_id: number;
     name: string;
     position: number;
+    points?: number | null;
     legacy?: boolean;
+    two_player?: boolean | null;
   };
 };
 
@@ -70,7 +73,9 @@ type AggregatedLevel = {
   levelId: number;
   levelName: string;
   position: number;
+  points: number | null;
   legacy: boolean;
+  twoPlayer: boolean | null;
   thumbnailUrl: string;
   records: AggregatedRecord[];
 };
@@ -326,7 +331,7 @@ async function fetchLevelDetails(levelId: number): Promise<LevelDetailsResponse 
 }
 
 function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: PlayerProfileResponse[]): AggregatedLevel[] {
-  const listedPlayers = new Set(listedPlayerUsernames.map((username) => username.toLowerCase()));
+  const listedPlayers = new Set(listedPlayerUsernames.map((username) => username.trim().toLowerCase()).filter(Boolean));
   const levelMap = new Map<number, AggregatedLevel>();
 
   for (const profile of profiles) {
@@ -335,15 +340,31 @@ function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: Playe
     const isListedPlayer = listedPlayers.has(playerUsername.toLowerCase());
 
     for (const record of profile.records ?? []) {
+      const levelPoints = toSafeInt(record.level.points);
+      const levelTwoPlayer = typeof record.level.two_player === "boolean" ? record.level.two_player : null;
+
       if (!levelMap.has(record.level.level_id)) {
         levelMap.set(record.level.level_id, {
           levelId: record.level.level_id,
           levelName: record.level.name,
           position: record.level.position,
+          points: levelPoints,
           legacy: Boolean(record.level.legacy),
+          twoPlayer: levelTwoPlayer,
           thumbnailUrl: levelThumbnail(record.level.level_id),
           records: [],
         });
+      }
+
+      const existingLevel = levelMap.get(record.level.level_id);
+      if (existingLevel) {
+        if (levelPoints !== null) {
+          existingLevel.points = levelPoints;
+        }
+
+        if (levelTwoPlayer !== null) {
+          existingLevel.twoPlayer = levelTwoPlayer;
+        }
       }
 
       levelMap.get(record.level.level_id)?.records.push({
@@ -482,6 +503,12 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
     const levelRows = levels.map((level) => {
       const details = detailsByLevelId.get(level.levelId);
       const position = toFiniteNumber(details?.position) ?? toFiniteNumber(level.position) ?? 0;
+      const detailsTwoPlayer = typeof details?.two_player === "boolean" ? details.two_player : null;
+      const mergedTwoPlayer =
+        level.twoPlayer === true || detailsTwoPlayer === true
+          ? true
+          : detailsTwoPlayer ?? level.twoPlayer ?? null;
+      const mergedPoints = toSafeInt(details?.points) ?? level.points;
 
       return {
         levelId: level.levelId,
@@ -490,8 +517,8 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
         legacy: details?.legacy ?? level.legacy,
         thumbnailUrl: level.thumbnailUrl,
         aredlId: details?.id ?? null,
-        points: toSafeInt(details?.points),
-        twoPlayer: details?.two_player ?? null,
+        points: mergedPoints,
+        twoPlayer: mergedTwoPlayer,
         tags: details?.tags ?? [],
         description: details?.description || null,
         song: toSafeInt(details?.song),
@@ -540,7 +567,10 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
       },
     );
 
-    revalidatePath("/leaderboard");
+    revalidateTag(CACHE_TAGS.leaderboardLevels, "max");
+    revalidateTag(CACHE_TAGS.profilesLeaderboard, "max");
+    revalidatePath(ROUTES.leaderboard);
+    revalidatePath(ROUTES.profiles);
 
     await reportProgress({
       stage: "done",
