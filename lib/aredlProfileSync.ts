@@ -1,5 +1,11 @@
 import players from "@/players.json";
 import { prisma } from "@/lib/prisma";
+import {
+  buildAredlLevelVariantLookup,
+  fetchAredlLevelCatalog,
+  inferRecordTwoPlayer,
+  resolveAredlLevelVariant,
+} from "@/lib/aredlLevelVariants";
 
 const API_BASE = "https://api.aredl.net/v2/api/aredl";
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -75,6 +81,14 @@ function toSafeInt(value: number | null | undefined): number | null {
   return Math.round(value);
 }
 
+function toSafeNumber(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return value;
+}
+
 async function fetchPlayerProfile(identifier: string): Promise<PlayerProfileResponse | null> {
   const trimmedIdentifier = identifier.trim();
 
@@ -144,6 +158,9 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
       playerDisplayName: string;
       playerUsername: string;
       isListedPlayer: boolean;
+      levelPosition: number | null;
+      levelPoints: number | null;
+      levelTwoPlayer: boolean | null;
       completedAt: Date | null;
       videoUrl: string | null;
     }>;
@@ -153,6 +170,13 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
         levelName: string | null;
         points: number | null;
         twoPlayer: boolean | null;
+      }
+    >();
+    const levelVariantPresenceById = new Map<
+      number,
+      {
+        hasSolo: boolean;
+        hasTwoPlayer: boolean;
       }
     >();
     const candidateLevelIds = new Set<number>();
@@ -167,8 +191,7 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
 
       const levelName = normalizeUsername(record.level?.name);
       const levelPoints = toSafeInt(record.level?.points);
-      const twoPlayerValue = record.level?.two_player;
-      const twoPlayer = typeof twoPlayerValue === "boolean" ? twoPlayerValue : null;
+      const twoPlayer = inferRecordTwoPlayer(record.level?.two_player, levelName);
 
       const previousMetadata = candidateLevelMetadataById.get(levelId);
       candidateLevelMetadataById.set(levelId, {
@@ -177,6 +200,21 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
         twoPlayer: twoPlayer ?? previousMetadata?.twoPlayer ?? null,
       });
 
+      const variantPresence = levelVariantPresenceById.get(levelId) ?? {
+        hasSolo: false,
+        hasTwoPlayer: false,
+      };
+
+      if (twoPlayer === true) {
+        variantPresence.hasTwoPlayer = true;
+      }
+
+      if (twoPlayer === false) {
+        variantPresence.hasSolo = true;
+      }
+
+      levelVariantPresenceById.set(levelId, variantPresence);
+
       candidateLevelIds.add(levelId);
       candidateRecordRows.push({
         id: recordId,
@@ -184,9 +222,61 @@ export async function syncUserProfileFromAredl(discordId: string): Promise<SyncU
         playerDisplayName,
         playerUsername: profileUsername,
         isListedPlayer,
+        levelPosition: toSafeNumber(record.level?.position),
+        levelPoints,
+        levelTwoPlayer: twoPlayer,
         completedAt: parseOptionalDate(record.created_at),
         videoUrl: record.video_url,
       });
+    }
+
+    if (candidateLevelIds.size > 0) {
+      const levelCatalog = await fetchAredlLevelCatalog();
+
+      if (levelCatalog) {
+        const levelVariantLookup = buildAredlLevelVariantLookup(levelCatalog);
+
+        for (const levelId of candidateLevelIds) {
+          const levelMetadata = candidateLevelMetadataById.get(levelId);
+          const variantPresence = levelVariantPresenceById.get(levelId);
+          const preferredTwoPlayer = variantPresence?.hasSolo && variantPresence?.hasTwoPlayer
+            ? null
+            : variantPresence?.hasTwoPlayer
+              ? true
+              : variantPresence?.hasSolo
+                ? false
+                : levelMetadata?.twoPlayer ?? null;
+          const resolvedVariant = resolveAredlLevelVariant(levelVariantLookup, levelId, preferredTwoPlayer);
+
+          if (!resolvedVariant) {
+            continue;
+          }
+
+          candidateLevelMetadataById.set(levelId, {
+            levelName: resolvedVariant.levelName ?? levelMetadata?.levelName ?? null,
+            points: resolvedVariant.points ?? levelMetadata?.points ?? null,
+            twoPlayer: variantPresence?.hasSolo && variantPresence?.hasTwoPlayer
+              ? null
+              : resolvedVariant.twoPlayer ?? levelMetadata?.twoPlayer ?? null,
+          });
+        }
+
+        for (const candidateRecordRow of candidateRecordRows) {
+          const resolvedVariant = resolveAredlLevelVariant(
+            levelVariantLookup,
+            candidateRecordRow.levelId,
+            candidateRecordRow.levelTwoPlayer,
+          );
+
+          if (!resolvedVariant) {
+            continue;
+          }
+
+          candidateRecordRow.levelPosition = resolvedVariant.position ?? candidateRecordRow.levelPosition;
+          candidateRecordRow.levelPoints = resolvedVariant.points ?? candidateRecordRow.levelPoints;
+          candidateRecordRow.levelTwoPlayer = resolvedVariant.twoPlayer ?? candidateRecordRow.levelTwoPlayer;
+        }
+      }
     }
 
     const existingLevels = await prisma.level.findMany({

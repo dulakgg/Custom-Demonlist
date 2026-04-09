@@ -50,6 +50,9 @@ model LevelRecord {
   playerDisplayName String
   playerUsername    String
   isListedPlayer    Boolean
+  levelPosition     Float?
+  levelPoints       Int?
+  levelTwoPlayer    Boolean?
   completedAt       DateTime?
   videoUrl          String?
   createdAt         DateTime  @default(now())

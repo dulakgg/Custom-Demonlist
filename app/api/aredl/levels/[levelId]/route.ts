@@ -106,7 +106,6 @@ export async function GET(_: Request, { params }: RouteParams) {
 
   const needsLiveReconcile =
     level.points == null
-    || level.twoPlayer == null
     || (/\(2p\)/i.test(level.levelName) && level.twoPlayer !== true);
 
   let liveDetails: LiveLevelDetails | null = null;

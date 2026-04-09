@@ -20,6 +20,9 @@ type ProfileRecord = {
   completedAt: string | null;
   videoUrl: string | null;
   leaderboardRank: number | null;
+  levelPosition: number | null;
+  levelPoints: number | null;
+  levelTwoPlayer: boolean | null;
   level: {
     levelId: number;
     levelName: string;
@@ -36,7 +39,7 @@ type Props = {
   records: ProfileRecord[];
   isOwnProfile: boolean;
   canRefreshProfile: boolean;
-  isAdminProfile: boolean;
+  isListedProfile: boolean;
   profileRank: number | null;
   profilePoints: number;
   profileCompletionCount: number;
@@ -60,6 +63,10 @@ function formatDate(value: string | null): string {
 }
 
 function isTwoPlayerRecord(record: ProfileRecord): boolean {
+  if (typeof record.levelTwoPlayer === "boolean") {
+    return record.levelTwoPlayer;
+  }
+
   if (typeof record.level.twoPlayer === "boolean") {
     return record.level.twoPlayer;
   }
@@ -72,7 +79,7 @@ export default function ProfilePageClient({
   records,
   isOwnProfile,
   canRefreshProfile,
-  isAdminProfile,
+  isListedProfile,
   profileRank,
   profilePoints,
   profileCompletionCount,
@@ -127,11 +134,11 @@ export default function ProfilePageClient({
             <div className="min-w-0">
               <h1 className="m-0 flex items-center gap-2 text-[clamp(1.15rem,2vw,1.8rem)] leading-tight text-(--text)">
                 <span className="truncate">{user.username}</span>
-                {isAdminProfile ? (
+                {isListedProfile ? (
                   <FaCrown
                     className="text-(--primary)"
-                    aria-label="This profile is an admin"
-                    title="This profile is an admin"
+                    aria-label="Listed player"
+                    title="Listed player"
                   />
                 ) : null}
               </h1>
@@ -192,6 +199,8 @@ export default function ProfilePageClient({
             {/* Records are pre-sorted on the server by local leaderboard rank. */}
             {records.map((record, index) => {
               const twoPlayerLabel = isTwoPlayerRecord(record) ? "2P" : "Solo";
+              const recordPosition = record.levelPosition ?? record.level.position;
+              const recordPoints = record.levelPoints ?? record.level.points ?? 0;
 
               return (
               <li
@@ -222,10 +231,10 @@ export default function ProfilePageClient({
                         Rank {record.leaderboardRank ? `#${record.leaderboardRank}` : "-"}
                       </span>
                       <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
-                        AREDL #{Math.round(record.level.position)}
+                        AREDL #{Math.round(recordPosition)}
                       </span>
                       <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
-                        {record.level.points ?? 0} pts
+                        {recordPoints} pts
                       </span>
                       <span className="shrink-0 rounded-full border border-(--primary) bg-[color-mix(in_srgb,var(--primary)_14%,var(--background))] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-(--primary)">
                         {twoPlayerLabel}

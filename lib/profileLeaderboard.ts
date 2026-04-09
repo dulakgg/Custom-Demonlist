@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 import { CACHE_TAGS } from "@/lib/routes";
+import players from "@/players.json";
 
 export type ProfileLeaderboardEntry = {
   userId: number;
@@ -8,6 +9,7 @@ export type ProfileLeaderboardEntry = {
   discordId: string;
   discordUsername: string;
   avatar: string | null;
+  isListedPlayer: boolean;
   points: number;
   completions: number;
   position: number;
@@ -19,6 +21,8 @@ function normalizePlayerName(value: string | null | undefined): string {
 
 const getProfilesLeaderboardCached = unstable_cache(
   async (): Promise<ProfileLeaderboardEntry[]> => {
+    const listedPlayers = new Set(players.map((player) => normalizePlayerName(player)).filter(Boolean));
+
     const [usersWithProfiles, scoredRecords] = await Promise.all([
       prisma.user.findMany({
         where: {
@@ -37,6 +41,7 @@ const getProfilesLeaderboardCached = unstable_cache(
       prisma.levelRecord.findMany({
         select: {
           playerUsername: true,
+          levelPoints: true,
           level: {
             select: {
               points: true,
@@ -72,7 +77,8 @@ const getProfilesLeaderboardCached = unstable_cache(
         continue;
       }
 
-      pointsByUserId.set(profileUserId, (pointsByUserId.get(profileUserId) ?? 0) + (record.level.points ?? 0));
+      const recordPoints = record.levelPoints ?? record.level.points ?? 0;
+      pointsByUserId.set(profileUserId, (pointsByUserId.get(profileUserId) ?? 0) + recordPoints);
       completionsByUserId.set(profileUserId, (completionsByUserId.get(profileUserId) ?? 0) + 1);
     }
 
@@ -86,6 +92,7 @@ const getProfilesLeaderboardCached = unstable_cache(
           discordId: profileUser.discordId,
           discordUsername,
           avatar: profileUser.avatar,
+          isListedPlayer: listedPlayers.has(normalizePlayerName(discordUsername || profileUser.username)),
           points: pointsByUserId.get(profileUser.id) ?? 0,
           completions: completionsByUserId.get(profileUser.id) ?? 0,
           position: 0,

@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FaCrown } from "react-icons/fa6";
-import { isAdminFromCandidates } from "@/lib/adminPlayers";
 import { getProfilesLeaderboard } from "@/lib/profileLeaderboard";
 import { profileByIdRoute } from "@/lib/routes";
 
@@ -29,8 +28,7 @@ export default async function ProfilesPage() {
         ) : (
           <div className="flex flex-col gap-2.5">
             {profiles.map((entry) => {
-              // Admin badge comes from env-driven admin matching.
-              const isAdminProfile = isAdminFromCandidates([entry.discordUsername, entry.username]);
+              const isListedProfile = entry.isListedPlayer;
 
               return (
                 <article
@@ -54,11 +52,11 @@ export default async function ProfilesPage() {
                         >
                           {entry.username}
                         </Link>
-                        {isAdminProfile ? (
+                        {isListedProfile ? (
                           <FaCrown
                             className="shrink-0 text-(--primary)"
-                            aria-label="This profile is an admin"
-                            title="This profile is an admin"
+                            aria-label="Listed player"
+                            title="Listed player"
                           />
                         ) : null}
                       </div>

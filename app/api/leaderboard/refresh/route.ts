@@ -3,11 +3,16 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CACHE_TAGS, ROUTES } from "@/lib/routes";
+import {
+  buildAredlLevelVariantLookup,
+  fetchAredlLevelCatalog,
+  inferRecordTwoPlayer,
+  resolveAredlLevelVariant,
+} from "@/lib/aredlLevelVariants";
 import players from "../../../../players.json";
 
 const API_BASE = "https://api.aredl.net/v2/api/aredl";
 const PROFILE_CONCURRENCY = 1;
-const DETAILS_CONCURRENCY = 1;
 const REQUEST_TIMEOUT_MS = 12_000;
 const REQUEST_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 650;
@@ -39,32 +44,14 @@ type PlayerProfileResponse = {
   records?: CompletionRecord[];
 };
 
-type LevelDetailsResponse = {
-  id: string;
-  level_id: number;
-  position: number;
-  name: string;
-  points?: number | null;
-  legacy?: boolean;
-  two_player?: boolean;
-  tags?: string[];
-  description?: string;
-  song?: number | null;
-  edel_enjoyment?: number | null;
-  is_edel_pending?: boolean;
-  gddl_tier?: number | null;
-  nlw_tier?: string | null;
-  publisher?: {
-    username?: string;
-    global_name?: string;
-  };
-};
-
 type AggregatedRecord = {
   id: string;
   playerDisplayName: string;
   playerUsername: string;
   isListedPlayer: boolean;
+  levelPosition: number | null;
+  levelPoints: number | null;
+  levelTwoPlayer: boolean | null;
   completedAt: string | undefined;
   videoUrl: string | null;
 };
@@ -326,10 +313,6 @@ async function fetchPlayerProfile(username: string): Promise<PlayerProfileRespon
   return fetchJsonWithRetry<PlayerProfileResponse>(`${API_BASE}/profile/${encodeURIComponent(username)}`);
 }
 
-async function fetchLevelDetails(levelId: number): Promise<LevelDetailsResponse | null> {
-  return fetchJsonWithRetry<LevelDetailsResponse>(`${API_BASE}/levels/${levelId}`);
-}
-
 function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: PlayerProfileResponse[]): AggregatedLevel[] {
   const listedPlayers = new Set(listedPlayerUsernames.map((username) => username.trim().toLowerCase()).filter(Boolean));
   const levelMap = new Map<number, AggregatedLevel>();
@@ -341,13 +324,14 @@ function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: Playe
 
     for (const record of profile.records ?? []) {
       const levelPoints = toSafeInt(record.level.points);
-      const levelTwoPlayer = typeof record.level.two_player === "boolean" ? record.level.two_player : null;
+      const levelPosition = toFiniteNumber(record.level.position);
+      const levelTwoPlayer = inferRecordTwoPlayer(record.level.two_player, record.level.name);
 
       if (!levelMap.has(record.level.level_id)) {
         levelMap.set(record.level.level_id, {
           levelId: record.level.level_id,
           levelName: record.level.name,
-          position: record.level.position,
+          position: levelPosition ?? 0,
           points: levelPoints,
           legacy: Boolean(record.level.legacy),
           twoPlayer: levelTwoPlayer,
@@ -358,12 +342,17 @@ function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: Playe
 
       const existingLevel = levelMap.get(record.level.level_id);
       if (existingLevel) {
+        if (levelPosition !== null) {
+          existingLevel.position = levelPosition;
+        }
+
         if (levelPoints !== null) {
           existingLevel.points = levelPoints;
         }
 
         if (levelTwoPlayer !== null) {
-          existingLevel.twoPlayer = levelTwoPlayer;
+          existingLevel.twoPlayer =
+            existingLevel.twoPlayer === null || existingLevel.twoPlayer === levelTwoPlayer ? levelTwoPlayer : null;
         }
       }
 
@@ -372,6 +361,9 @@ function buildLeaderboardLevels(listedPlayerUsernames: string[], profiles: Playe
         playerDisplayName,
         playerUsername,
         isListedPlayer,
+        levelPosition,
+        levelPoints,
+        levelTwoPlayer,
         completedAt: record.created_at,
         videoUrl: record.video_url,
       });
@@ -466,31 +458,26 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
     const levels = buildLeaderboardLevels(listedPlayerUsernames, profiles);
     const totalRecords = levels.reduce((sum, level) => sum + level.records.length, 0);
 
-    const detailResponses = await mapWithConcurrency(
-      levels,
-      DETAILS_CONCURRENCY,
-      async (level) => fetchLevelDetails(level.levelId),
-      async (details, index, completed, total) => {
-        const level = levels[index];
-        await reportProgress({
-          stage: "details",
-          completed,
-          total,
-          note: details
-            ? `Fetched level details: #${level.levelId} ${level.levelName}`
-            : `Missing level details: #${level.levelId} ${level.levelName}`,
-          force: completed === total,
-        });
-      },
-    );
-    const detailsByLevelId = new Map<number, LevelDetailsResponse>();
+    await reportProgress({
+      stage: "details",
+      completed: 0,
+      total: 1,
+      note: "Fetching AREDL level variants catalog.",
+      force: true,
+    });
 
-    for (let index = 0; index < levels.length; index += 1) {
-      const details = detailResponses[index];
-      if (details) {
-        detailsByLevelId.set(levels[index].levelId, details);
-      }
-    }
+    const levelCatalog = await fetchAredlLevelCatalog();
+    const levelVariantLookup = levelCatalog ? buildAredlLevelVariantLookup(levelCatalog) : null;
+
+    await reportProgress({
+      stage: "details",
+      completed: 1,
+      total: 1,
+      note: levelCatalog
+        ? `Fetched ${levelCatalog.length} level entries from AREDL.`
+        : "Could not fetch level catalog, using record metadata only.",
+      force: true,
+    });
 
     await reportProgress({
       stage: "database",
@@ -501,33 +488,31 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
     await sleep(PHASE_PAUSE_MS);
 
     const levelRows = levels.map((level) => {
-      const details = detailsByLevelId.get(level.levelId);
-      const position = toFiniteNumber(details?.position) ?? toFiniteNumber(level.position) ?? 0;
-      const detailsTwoPlayer = typeof details?.two_player === "boolean" ? details.two_player : null;
-      const mergedTwoPlayer =
-        level.twoPlayer === true || detailsTwoPlayer === true
-          ? true
-          : detailsTwoPlayer ?? level.twoPlayer ?? null;
-      const mergedPoints = toSafeInt(details?.points) ?? level.points;
+      const resolvedVariant = levelVariantLookup
+        ? resolveAredlLevelVariant(levelVariantLookup, level.levelId, level.twoPlayer)
+        : null;
+      const position = resolvedVariant?.position ?? toFiniteNumber(level.position) ?? 0;
+      const mergedTwoPlayer = resolvedVariant?.twoPlayer ?? level.twoPlayer ?? null;
+      const mergedPoints = resolvedVariant?.points ?? level.points;
 
       return {
         levelId: level.levelId,
-        levelName: details?.name?.trim() || level.levelName,
+        levelName: resolvedVariant?.levelName || level.levelName,
         position,
-        legacy: details?.legacy ?? level.legacy,
+        legacy: resolvedVariant?.legacy ?? level.legacy,
         thumbnailUrl: level.thumbnailUrl,
-        aredlId: details?.id ?? null,
+        aredlId: resolvedVariant?.aredlId ?? null,
         points: mergedPoints,
         twoPlayer: mergedTwoPlayer,
-        tags: details?.tags ?? [],
-        description: details?.description || null,
-        song: toSafeInt(details?.song),
-        edelEnjoyment: toFiniteNumber(details?.edel_enjoyment),
-        isEdelPending: details?.is_edel_pending ?? null,
-        gddlTier: toFiniteNumber(details?.gddl_tier),
-        nlwTier: details?.nlw_tier || null,
-        publisherUsername: details?.publisher?.username || null,
-        publisherGlobal: details?.publisher?.global_name || null,
+        tags: resolvedVariant?.tags ?? [],
+        description: resolvedVariant?.description ?? null,
+        song: resolvedVariant?.song ?? null,
+        edelEnjoyment: resolvedVariant?.edelEnjoyment ?? null,
+        isEdelPending: resolvedVariant?.isEdelPending ?? null,
+        gddlTier: resolvedVariant?.gddlTier ?? null,
+        nlwTier: resolvedVariant?.nlwTier ?? null,
+        publisherUsername: resolvedVariant?.publisherUsername ?? null,
+        publisherGlobal: resolvedVariant?.publisherGlobal ?? null,
       };
     });
 
@@ -538,6 +523,9 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
         playerDisplayName: record.playerDisplayName,
         playerUsername: record.playerUsername,
         isListedPlayer: record.isListedPlayer,
+        levelPosition: record.levelPosition,
+        levelPoints: record.levelPoints,
+        levelTwoPlayer: record.levelTwoPlayer,
         completedAt: parseOptionalDate(record.completedAt),
         videoUrl: record.videoUrl,
       })),
@@ -574,7 +562,7 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
 
     await reportProgress({
       stage: "done",
-      note: `Refresh complete: ${levels.length} levels, ${totalRecords} records, ${detailsByLevelId.size} detailed levels.`,
+      note: `Refresh complete: ${levels.length} levels, ${totalRecords} records, ${levelCatalog?.length ?? 0} catalog entries.`,
       force: true,
     });
 
@@ -585,7 +573,7 @@ async function refreshLeaderboard(request: NextRequest): Promise<NextResponse> {
       records: totalRecords,
       fetchedProfiles: profiles.length,
       missingProfiles: profileIdentifiers.length - profiles.length,
-      levelsWithDetails: detailsByLevelId.size,
+      levelsWithCatalogEntries: levelCatalog?.length ?? 0,
     });
   } catch (error) {
     await reportProgress({

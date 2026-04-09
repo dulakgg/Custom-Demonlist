@@ -7,6 +7,13 @@ import { unstable_cache } from "next/cache";
 import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import ProfilePageClient from "./ProfilePageClient";
+import players from "@/players.json";
+
+function normalizePlayerName(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+const listedPlayers = new Set(players.map((player) => normalizePlayerName(player)).filter(Boolean));
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -49,7 +56,7 @@ export default async function ProfilePage({ params }: Props) {
     return notFound();
   }
 
-  const isAdminProfile = isAdminFromCandidates([user.discord_username, user.username]);
+  const isListedProfile = listedPlayers.has(normalizePlayerName(user.discord_username || user.username));
 
   const [profileRecords, leaderboardLevelOrder] = await Promise.all([
     user.discord_username
@@ -142,6 +149,9 @@ export default async function ProfilePage({ params }: Props) {
         completedAt: record.completedAt?.toISOString() ?? null,
         videoUrl: record.videoUrl,
         leaderboardRank: leaderboardRankByLevelId.get(record.level.levelId) ?? null,
+        levelPosition: record.levelPosition,
+        levelPoints: record.levelPoints,
+        levelTwoPlayer: record.levelTwoPlayer,
         level: {
           levelId: record.level.levelId,
           levelName: record.level.levelName,
@@ -154,7 +164,7 @@ export default async function ProfilePage({ params }: Props) {
       }))}
       isOwnProfile={isOwnProfile}
       canRefreshProfile={canRefreshProfile}
-      isAdminProfile={isAdminProfile}
+      isListedProfile={isListedProfile}
       profileRank={profileRank}
       profilePoints={profilePoints}
       profileCompletionCount={profileCompletionCount}
